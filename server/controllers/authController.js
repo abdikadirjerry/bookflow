@@ -3,7 +3,7 @@ const User = require("../models/User");
 
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -29,7 +29,7 @@ const registerUser = async (req, res) => {
       name: name.trim(),
       email: normalizedEmail,
       password: hashedPassword,
-      role: role || "customer",
+      role: "customer",
     });
 
     res.status(201).json({
