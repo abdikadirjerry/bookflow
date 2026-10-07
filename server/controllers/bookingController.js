@@ -3,6 +3,24 @@ const Booking = require("../models/Booking");
 const Service = require("../models/Service");
 const Availability = require("../models/Availability");
 
+const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const timeToMinutes = (time) => {
+  const [hours, minutes] = time.split(":").map(Number);
+
+  return hours * 60 + minutes;
+};
+
+const minutesToTime = (minutes) => {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  return `${String(hours).padStart(2, "0")}:${String(remainingMinutes).padStart(
+    2,
+    "0",
+  )}`;
+};
+
 const createBooking = async (req, res) => {
   try {
     const { serviceId, date, startTime } = req.body;
@@ -116,16 +134,9 @@ const createBooking = async (req, res) => {
       });
     }
 
-    const availabilityStartParts = dayAvailability.startTime.split(":");
+    const availabilityStartMinutes = timeToMinutes(dayAvailability.startTime);
 
-    const availabilityEndParts = dayAvailability.endTime.split(":");
-
-    const availabilityStartMinutes =
-      Number(availabilityStartParts[0]) * 60 +
-      Number(availabilityStartParts[1]);
-
-    const availabilityEndMinutes =
-      Number(availabilityEndParts[0]) * 60 + Number(availabilityEndParts[1]);
+    const availabilityEndMinutes = timeToMinutes(dayAvailability.endTime);
 
     const startMinutes = startHour * 60 + startMinute;
     const endMinutes = startMinutes + service.duration;
@@ -148,12 +159,7 @@ const createBooking = async (req, res) => {
       });
     }
 
-    const endHour = Math.floor(endMinutes / 60);
-    const endMinute = endMinutes % 60;
-
-    const endTime = `${String(endHour).padStart(2, "0")}:${String(
-      endMinute,
-    ).padStart(2, "0")}`;
+    const endTime = minutesToTime(endMinutes);
 
     const overlappingBooking = await Booking.findOne({
       service: serviceId,
@@ -203,6 +209,165 @@ const createBooking = async (req, res) => {
 
     res.status(500).json({
       message: "Server error while creating booking",
+    });
+  }
+};
+
+const getAvailableSlots = async (req, res) => {
+  try {
+    const { serviceId, date } = req.query;
+
+    if (!serviceId || !date) {
+      return res.status(400).json({
+        message: "Service ID and date are required",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(serviceId)) {
+      return res.status(400).json({
+        message: "Invalid service ID",
+      });
+    }
+
+    const service = await Service.findOne({
+      _id: serviceId,
+      isActive: true,
+    });
+
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found or is inactive",
+      });
+    }
+
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (!datePattern.test(date)) {
+      return res.status(400).json({
+        message: "Date must use YYYY-MM-DD format",
+      });
+    }
+
+    const [year, month, day] = date.split("-").map(Number);
+
+    const dateObject = new Date(year, month - 1, day);
+
+    if (
+      dateObject.getFullYear() !== year ||
+      dateObject.getMonth() !== month - 1 ||
+      dateObject.getDate() !== day
+    ) {
+      return res.status(400).json({
+        message: "Date must be a valid calendar date",
+      });
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (dateObject < today) {
+      return res.status(400).json({
+        message: "Date cannot be in the past",
+      });
+    }
+
+    const availability = await Availability.findOne({
+      owner: service.owner,
+    });
+
+    if (!availability) {
+      return res.status(400).json({
+        message: "This business has not configured its availability",
+      });
+    }
+
+    const dayNames = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+
+    const dayName = dayNames[dateObject.getDay()];
+    const dayAvailability = availability[dayName];
+
+    if (!dayAvailability || !dayAvailability.enabled) {
+      return res.status(200).json({
+        date,
+        service: {
+          id: service._id,
+          name: service.name,
+          duration: service.duration,
+        },
+        slots: [],
+      });
+    }
+
+    if (
+      !timePattern.test(dayAvailability.startTime) ||
+      !timePattern.test(dayAvailability.endTime)
+    ) {
+      return res.status(500).json({
+        message: "Business availability contains invalid time data",
+      });
+    }
+
+    const businessStartMinutes = timeToMinutes(dayAvailability.startTime);
+
+    const businessEndMinutes = timeToMinutes(dayAvailability.endTime);
+
+    const bookings = await Booking.find({
+      service: serviceId,
+      date,
+      status: {
+        $in: ["pending", "confirmed"],
+      },
+    }).select("startTime endTime");
+
+    const slots = [];
+
+    for (
+      let startMinutes = businessStartMinutes;
+      startMinutes + service.duration <= businessEndMinutes;
+      startMinutes += service.duration
+    ) {
+      const endMinutes = startMinutes + service.duration;
+
+      const startTime = minutesToTime(startMinutes);
+      const endTime = minutesToTime(endMinutes);
+
+      const isBooked = bookings.some((booking) => {
+        return booking.startTime < endTime && booking.endTime > startTime;
+      });
+
+      slots.push({
+        startTime,
+        endTime,
+        available: !isBooked,
+      });
+    }
+
+    res.status(200).json({
+      date,
+      service: {
+        id: service._id,
+        name: service.name,
+        duration: service.duration,
+      },
+      businessHours: {
+        startTime: dayAvailability.startTime,
+        endTime: dayAvailability.endTime,
+      },
+      slots,
+    });
+  } catch (error) {
+    console.error("Get available slots error:", error);
+
+    res.status(500).json({
+      message: "Server error while fetching available slots",
     });
   }
 };
@@ -402,6 +567,7 @@ const updateBookingStatus = async (req, res) => {
 
 module.exports = {
   createBooking,
+  getAvailableSlots,
   getMyBookings,
   cancelBooking,
   getOwnerBookings,

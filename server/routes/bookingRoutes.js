@@ -1,15 +1,25 @@
 const express = require("express");
+
 const {
   createBooking,
+  getAvailableSlots,
   getMyBookings,
   cancelBooking,
   getOwnerBookings,
   updateBookingStatus,
 } = require("../controllers/bookingController");
+
 const protect = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
 
 const router = express.Router();
+
+router.get(
+  "/available-slots",
+  protect,
+  authorizeRoles("customer"),
+  getAvailableSlots,
+);
 
 router.get("/my-bookings", protect, authorizeRoles("customer"), getMyBookings);
 
