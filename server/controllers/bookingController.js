@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Booking = require("../models/Booking");
 const Service = require("../models/Service");
+const Availability = require("../models/Availability");
 
 const createBooking = async (req, res) => {
   try {
@@ -26,6 +27,16 @@ const createBooking = async (req, res) => {
     if (!service) {
       return res.status(404).json({
         message: "Service not found or is inactive",
+      });
+    }
+
+    const availability = await Availability.findOne({
+      owner: service.owner,
+    });
+
+    if (!availability) {
+      return res.status(400).json({
+        message: "This business has not configured its availability",
       });
     }
 
@@ -86,8 +97,50 @@ const createBooking = async (req, res) => {
       });
     }
 
+    const dayNames = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+
+    const dayName = dayNames[dateObject.getDay()];
+    const dayAvailability = availability[dayName];
+
+    if (!dayAvailability || !dayAvailability.enabled) {
+      return res.status(400).json({
+        message: `The business is closed on ${dayName}`,
+      });
+    }
+
+    const availabilityStartParts = dayAvailability.startTime.split(":");
+
+    const availabilityEndParts = dayAvailability.endTime.split(":");
+
+    const availabilityStartMinutes =
+      Number(availabilityStartParts[0]) * 60 +
+      Number(availabilityStartParts[1]);
+
+    const availabilityEndMinutes =
+      Number(availabilityEndParts[0]) * 60 + Number(availabilityEndParts[1]);
+
     const startMinutes = startHour * 60 + startMinute;
     const endMinutes = startMinutes + service.duration;
+
+    if (startMinutes < availabilityStartMinutes) {
+      return res.status(400).json({
+        message: `The business opens at ${dayAvailability.startTime}`,
+      });
+    }
+
+    if (endMinutes > availabilityEndMinutes) {
+      return res.status(400).json({
+        message: `The booking must finish by ${dayAvailability.endTime}`,
+      });
+    }
 
     if (endMinutes > 24 * 60) {
       return res.status(400).json({
@@ -258,7 +311,7 @@ const getOwnerBookings = async (req, res) => {
     console.error("Get owner bookings error:", error);
 
     res.status(500).json({
-      message: "Server error while fetching owner bookings",
+      message: "Server error while fetching bookings",
     });
   }
 };
