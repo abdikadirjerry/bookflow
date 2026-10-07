@@ -6,12 +6,34 @@ import {
 
 const AuthContext = createContext(null);
 
+const getStoredUser = () => {
+  const storedUser = localStorage.getItem("bookflow_user");
+
+  if (!storedUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(storedUser);
+  } catch {
+    localStorage.removeItem("bookflow_user");
+    return null;
+  }
+};
+
+const getStoredToken = () => {
+  return localStorage.getItem("bookflow_token");
+};
+
 const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
+  const [user, setUser] = useState(getStoredUser);
+  const [token, setToken] = useState(getStoredToken);
 
   const login = async (email, password) => {
     const data = await loginUserRequest(email, password);
+
+    localStorage.setItem("bookflow_token", data.token);
+    localStorage.setItem("bookflow_user", JSON.stringify(data.user));
 
     setUser(data.user);
     setToken(data.token);
@@ -26,6 +48,9 @@ const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    localStorage.removeItem("bookflow_token");
+    localStorage.removeItem("bookflow_user");
+
     setUser(null);
     setToken(null);
   };
