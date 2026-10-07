@@ -154,6 +154,31 @@ const createBooking = async (req, res) => {
   }
 };
 
+const getMyBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({
+      customer: req.user.userId,
+    })
+      .populate("service", "name description duration price")
+      .sort({
+        date: 1,
+        startTime: 1,
+      });
+
+    res.status(200).json({
+      count: bookings.length,
+      bookings,
+    });
+  } catch (error) {
+    console.error("Get my bookings error:", error);
+
+    res.status(500).json({
+      message: "Server error while fetching bookings",
+    });
+  }
+};
+
 module.exports = {
   createBooking,
+  getMyBookings,
 };
