@@ -7,6 +7,7 @@ const serviceRoutes = require("./routes/serviceRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const userRoutes = require("./routes/userRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
+const errorHandler = require("./middleware/errorMiddleware");
 
 dotenv.config();
 
@@ -30,6 +31,8 @@ app.get("/", (req, res) => {
     message: "BookFlow API is running",
   });
 });
+
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`BookFlow server running on http://localhost:${PORT}`);
