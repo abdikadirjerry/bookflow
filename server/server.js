@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const connectDB = require("./config/db");
+const validateEnvironment = require("./config/env");
 const authRoutes = require("./routes/authRoutes");
 const protectedRoutes = require("./routes/protectedRoutes");
 const serviceRoutes = require("./routes/serviceRoutes");
@@ -11,6 +12,8 @@ const availabilityRoutes = require("./routes/availabilityRoutes");
 const errorHandler = require("./middleware/errorMiddleware");
 
 dotenv.config();
+
+validateEnvironment();
 
 const app = express();
 
