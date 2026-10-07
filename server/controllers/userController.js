@@ -55,6 +55,95 @@ const getOwnerCustomers = async (req, res) => {
   }
 };
 
+const getOwnerDashboardStats = async (req, res) => {
+  try {
+    const services = await Service.find({
+      owner: req.user.userId,
+    }).select("_id");
+
+    const serviceIds = services.map((service) => service._id);
+
+    const [
+      totalServices,
+      activeServices,
+      totalBookings,
+      pendingBookings,
+      confirmedBookings,
+      completedBookings,
+      cancelledBookings,
+    ] = await Promise.all([
+      Service.countDocuments({
+        owner: req.user.userId,
+      }),
+
+      Service.countDocuments({
+        owner: req.user.userId,
+        isActive: true,
+      }),
+
+      Booking.countDocuments({
+        service: {
+          $in: serviceIds,
+        },
+      }),
+
+      Booking.countDocuments({
+        service: {
+          $in: serviceIds,
+        },
+        status: "pending",
+      }),
+
+      Booking.countDocuments({
+        service: {
+          $in: serviceIds,
+        },
+        status: "confirmed",
+      }),
+
+      Booking.countDocuments({
+        service: {
+          $in: serviceIds,
+        },
+        status: "completed",
+      }),
+
+      Booking.countDocuments({
+        service: {
+          $in: serviceIds,
+        },
+        status: "cancelled",
+      }),
+    ]);
+
+    const uniqueCustomerIds = await Booking.distinct("customer", {
+      service: {
+        $in: serviceIds,
+      },
+    });
+
+    res.status(200).json({
+      stats: {
+        totalServices,
+        activeServices,
+        totalCustomers: uniqueCustomerIds.length,
+        totalBookings,
+        pendingBookings,
+        confirmedBookings,
+        completedBookings,
+        cancelledBookings,
+      },
+    });
+  } catch (error) {
+    console.error("Get owner dashboard stats error:", error);
+
+    res.status(500).json({
+      message: "Server error while fetching dashboard statistics",
+    });
+  }
+};
+
 module.exports = {
   getOwnerCustomers,
+  getOwnerDashboardStats,
 };

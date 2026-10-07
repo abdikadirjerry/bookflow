@@ -1,5 +1,8 @@
 const express = require("express");
-const { getOwnerCustomers } = require("../controllers/userController");
+const {
+  getOwnerCustomers,
+  getOwnerDashboardStats,
+} = require("../controllers/userController");
 const protect = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
 
@@ -10,6 +13,13 @@ router.get(
   protect,
   authorizeRoles("business_owner"),
   getOwnerCustomers,
+);
+
+router.get(
+  "/dashboard-stats",
+  protect,
+  authorizeRoles("business_owner"),
+  getOwnerDashboardStats,
 );
 
 module.exports = router;
