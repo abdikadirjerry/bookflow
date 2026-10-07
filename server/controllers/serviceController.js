@@ -172,9 +172,54 @@ const updateService = async (req, res) => {
   }
 };
 
+const deleteService = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        message: "Service not found",
+      });
+    }
+
+    const service = await Service.findById(req.params.id);
+
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found",
+      });
+    }
+
+    if (service.owner.toString() !== req.user.userId) {
+      return res.status(403).json({
+        message: "You do not have permission to delete this service",
+      });
+    }
+
+    if (!service.isActive) {
+      return res.status(400).json({
+        message: "Service is already inactive",
+      });
+    }
+
+    service.isActive = false;
+
+    await service.save();
+
+    res.status(200).json({
+      message: "Service deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete service error:", error);
+
+    res.status(500).json({
+      message: "Server error while deleting service",
+    });
+  }
+};
+
 module.exports = {
   createService,
   getServices,
   getServiceById,
   updateService,
+  deleteService,
 };
