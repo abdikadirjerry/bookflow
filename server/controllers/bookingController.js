@@ -230,8 +230,42 @@ const cancelBooking = async (req, res) => {
   }
 };
 
+const getOwnerBookings = async (req, res) => {
+  try {
+    const services = await Service.find({
+      owner: req.user.userId,
+    }).select("_id");
+
+    const serviceIds = services.map((service) => service._id);
+
+    const bookings = await Booking.find({
+      service: {
+        $in: serviceIds,
+      },
+    })
+      .populate("customer", "name email")
+      .populate("service", "name description duration price")
+      .sort({
+        date: 1,
+        startTime: 1,
+      });
+
+    res.status(200).json({
+      count: bookings.length,
+      bookings,
+    });
+  } catch (error) {
+    console.error("Get owner bookings error:", error);
+
+    res.status(500).json({
+      message: "Server error while fetching owner bookings",
+    });
+  }
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
   cancelBooking,
+  getOwnerBookings,
 };

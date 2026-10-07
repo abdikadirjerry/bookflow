@@ -3,6 +3,7 @@ const {
   createBooking,
   getMyBookings,
   cancelBooking,
+  getOwnerBookings,
 } = require("../controllers/bookingController");
 const protect = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
@@ -10,6 +11,13 @@ const authorizeRoles = require("../middleware/roleMiddleware");
 const router = express.Router();
 
 router.get("/my-bookings", protect, authorizeRoles("customer"), getMyBookings);
+
+router.get(
+  "/owner",
+  protect,
+  authorizeRoles("business_owner"),
+  getOwnerBookings,
+);
 
 router.patch("/:id/cancel", protect, authorizeRoles("customer"), cancelBooking);
 
