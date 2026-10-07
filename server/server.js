@@ -42,6 +42,13 @@ app.get("/", (req, res) => {
   });
 });
 
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    message: "BookFlow API is healthy",
+  });
+});
+
 app.use(errorHandler);
 
 app.listen(PORT, () => {
