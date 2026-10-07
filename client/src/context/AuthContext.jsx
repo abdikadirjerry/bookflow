@@ -1,4 +1,8 @@
 import { createContext, useContext, useState } from "react";
+import {
+  loginUser as loginUserRequest,
+  registerUser as registerUserRequest,
+} from "../services/authService";
 
 const AuthContext = createContext(null);
 
@@ -6,9 +10,19 @@ const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
 
-  const login = (userData, authToken) => {
-    setUser(userData);
-    setToken(authToken);
+  const login = async (email, password) => {
+    const data = await loginUserRequest(email, password);
+
+    setUser(data.user);
+    setToken(data.token);
+
+    return data;
+  };
+
+  const register = async (name, email, password) => {
+    const data = await registerUserRequest(name, email, password);
+
+    return data;
   };
 
   const logout = () => {
@@ -20,6 +34,7 @@ const AuthProvider = ({ children }) => {
     user,
     token,
     login,
+    register,
     logout,
     isAuthenticated: Boolean(token),
   };
