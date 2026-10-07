@@ -178,7 +178,60 @@ const getMyBookings = async (req, res) => {
   }
 };
 
+const cancelBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
+
+    const booking = await Booking.findById(id);
+
+    if (!booking) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
+
+    if (booking.customer.toString() !== req.user.userId) {
+      return res.status(403).json({
+        message: "You do not have permission to cancel this booking",
+      });
+    }
+
+    if (!["pending", "confirmed"].includes(booking.status)) {
+      return res.status(400).json({
+        message: `Booking cannot be cancelled because its status is ${booking.status}`,
+      });
+    }
+
+    booking.status = "cancelled";
+
+    await booking.save();
+
+    const updatedBooking = await Booking.findById(booking._id).populate(
+      "service",
+      "name description duration price",
+    );
+
+    res.status(200).json({
+      message: "Booking cancelled successfully",
+      booking: updatedBooking,
+    });
+  } catch (error) {
+    console.error("Cancel booking error:", error);
+
+    res.status(500).json({
+      message: "Server error while cancelling booking",
+    });
+  }
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
+  cancelBooking,
 };
