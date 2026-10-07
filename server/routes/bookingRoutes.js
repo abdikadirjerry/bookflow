@@ -4,6 +4,7 @@ const {
   getMyBookings,
   cancelBooking,
   getOwnerBookings,
+  updateBookingStatus,
 } = require("../controllers/bookingController");
 const protect = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/roleMiddleware");
@@ -17,6 +18,13 @@ router.get(
   protect,
   authorizeRoles("business_owner"),
   getOwnerBookings,
+);
+
+router.patch(
+  "/:id/status",
+  protect,
+  authorizeRoles("business_owner"),
+  updateBookingStatus,
 );
 
 router.patch("/:id/cancel", protect, authorizeRoles("customer"), cancelBooking);

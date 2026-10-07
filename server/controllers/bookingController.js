@@ -263,9 +263,94 @@ const getOwnerBookings = async (req, res) => {
   }
 };
 
+const updateBookingStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        message: "Booking status is required",
+      });
+    }
+
+    const allowedStatuses = ["pending", "confirmed", "completed", "cancelled"];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Status must be pending, confirmed, completed, or cancelled",
+      });
+    }
+
+    const booking = await Booking.findById(id);
+
+    if (!booking) {
+      return res.status(404).json({
+        message: "Booking not found",
+      });
+    }
+
+    const service = await Service.findOne({
+      _id: booking.service,
+      owner: req.user.userId,
+    });
+
+    if (!service) {
+      return res.status(403).json({
+        message: "You do not have permission to update this booking",
+      });
+    }
+
+    const allowedTransitions = {
+      pending: ["confirmed", "cancelled"],
+      confirmed: ["completed", "cancelled"],
+      completed: [],
+      cancelled: [],
+    };
+
+    if (!allowedTransitions[booking.status].includes(status)) {
+      return res.status(400).json({
+        message: `Cannot change booking status from ${booking.status} to ${status}`,
+      });
+    }
+
+    booking.status = status;
+
+    await booking.save();
+
+    const updatedBooking = await Booking.findById(booking._id)
+      .populate("customer", "name email")
+      .populate("service", "name description duration price");
+
+    res.status(200).json({
+      message: "Booking status updated successfully",
+      booking: updatedBooking,
+    });
+  } catch (error) {
+    console.error("Update booking status error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error while updating booking status",
+    });
+  }
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
   cancelBooking,
   getOwnerBookings,
+  updateBookingStatus,
 };
