@@ -63,7 +63,39 @@ const getServices = async (req, res) => {
   }
 };
 
+const getServiceById = async (req, res) => {
+  try {
+    const service = await Service.findOne({
+      _id: req.params.id,
+      isActive: true,
+    }).populate("owner", "name");
+
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found",
+      });
+    }
+
+    res.status(200).json({
+      service,
+    });
+  } catch (error) {
+    console.error("Get service by ID error:", error);
+
+    if (error.name === "CastError") {
+      return res.status(404).json({
+        message: "Service not found",
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error while fetching service",
+    });
+  }
+};
+
 module.exports = {
   createService,
   getServices,
+  getServiceById,
 };
