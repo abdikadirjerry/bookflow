@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Service = require("../models/Service");
 
 const createService = async (req, res) => {
@@ -94,8 +95,86 @@ const getServiceById = async (req, res) => {
   }
 };
 
+const updateService = async (req, res) => {
+  try {
+    const { name, description, duration, price, isActive } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        message: "Service not found",
+      });
+    }
+
+    const service = await Service.findById(req.params.id);
+
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found",
+      });
+    }
+
+    if (service.owner.toString() !== req.user.userId) {
+      return res.status(403).json({
+        message: "You do not have permission to update this service",
+      });
+    }
+
+    if (
+      name === undefined &&
+      description === undefined &&
+      duration === undefined &&
+      price === undefined &&
+      isActive === undefined
+    ) {
+      return res.status(400).json({
+        message: "At least one field is required to update the service",
+      });
+    }
+
+    if (name !== undefined) {
+      service.name = name;
+    }
+
+    if (description !== undefined) {
+      service.description = description;
+    }
+
+    if (duration !== undefined) {
+      service.duration = duration;
+    }
+
+    if (price !== undefined) {
+      service.price = price;
+    }
+
+    if (isActive !== undefined) {
+      service.isActive = isActive;
+    }
+
+    await service.save();
+
+    res.status(200).json({
+      message: "Service updated successfully",
+      service,
+    });
+  } catch (error) {
+    console.error("Update service error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      message: "Server error while updating service",
+    });
+  }
+};
+
 module.exports = {
   createService,
   getServices,
   getServiceById,
+  updateService,
 };
