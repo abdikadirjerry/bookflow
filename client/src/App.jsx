@@ -1,11 +1,12 @@
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
 
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-slate-50">
-        <h1 className="text-4xl font-bold text-slate-900">BookFlow</h1>
-      </div>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+      </Routes>
     </BrowserRouter>
   );
 }
