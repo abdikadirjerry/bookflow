@@ -6,6 +6,7 @@ const protectedRoutes = require("./routes/protectedRoutes");
 const serviceRoutes = require("./routes/serviceRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const userRoutes = require("./routes/userRoutes");
+const availabilityRoutes = require("./routes/availabilityRoutes");
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use("/api/protected", protectedRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/availability", availabilityRoutes);
 
 app.get("/", (req, res) => {
   res.json({
