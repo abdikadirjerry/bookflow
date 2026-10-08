@@ -23,4 +23,10 @@ const getMyBookings = async () => {
   return response.data;
 };
 
-export { getAvailableSlots, createBooking, getMyBookings };
+const cancelBooking = async (bookingId) => {
+  const response = await api.patch(`/bookings/${bookingId}/cancel`);
+
+  return response.data;
+};
+
+export { getAvailableSlots, createBooking, getMyBookings, cancelBooking };
