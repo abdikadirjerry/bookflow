@@ -5,7 +5,9 @@ import Services from "./pages/Services";
 import ServiceDetails from "./pages/ServiceDetails";
 import Booking from "./pages/Booking";
 import MyBookings from "./pages/MyBookings";
+import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./routes/ProtectedRoute";
+import RoleRoute from "./routes/RoleRoute";
 
 function App() {
   return (
@@ -22,6 +24,10 @@ function App() {
           <Route path="/services/:serviceId/book" element={<Booking />} />
 
           <Route path="/bookings" element={<MyBookings />} />
+        </Route>
+
+        <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>
+          <Route path="/dashboard" element={<Dashboard />} />
         </Route>
       </Routes>
     </BrowserRouter>
