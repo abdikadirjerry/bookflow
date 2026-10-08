@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { deleteService, getServices } from "../services/serviceService";
+import { deleteService, getOwnerServices } from "../services/serviceService";
 
 function OwnerServices() {
   const [services, setServices] = useState([]);
@@ -16,7 +16,7 @@ function OwnerServices() {
         setIsLoading(true);
         setError("");
 
-        const data = await getServices();
+        const data = await getOwnerServices();
 
         setServices(data.services || []);
       } catch (error) {

@@ -64,6 +64,25 @@ const getServices = async (req, res) => {
   }
 };
 
+const getOwnerServices = async (req, res) => {
+  try {
+    const services = await Service.find({
+      owner: req.user.userId,
+    }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      count: services.length,
+      services,
+    });
+  } catch (error) {
+    console.error("Get owner services error:", error);
+
+    res.status(500).json({
+      message: "Server error while fetching your services",
+    });
+  }
+};
+
 const getServiceById = async (req, res) => {
   try {
     const service = await Service.findOne({
@@ -219,6 +238,7 @@ const deleteService = async (req, res) => {
 module.exports = {
   createService,
   getServices,
+  getOwnerServices,
   getServiceById,
   updateService,
   deleteService,

@@ -6,6 +6,12 @@ const getServices = async () => {
   return response.data;
 };
 
+const getOwnerServices = async () => {
+  const response = await api.get("/services/owner");
+
+  return response.data;
+};
+
 const getServiceById = async (serviceId) => {
   const response = await api.get(`/services/${serviceId}`);
 
@@ -32,6 +38,7 @@ const deleteService = async (serviceId) => {
 
 export {
   getServices,
+  getOwnerServices,
   getServiceById,
   createService,
   updateService,

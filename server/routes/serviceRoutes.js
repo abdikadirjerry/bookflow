@@ -2,6 +2,7 @@ const express = require("express");
 const {
   createService,
   getServices,
+  getOwnerServices,
   getServiceById,
   updateService,
   deleteService,
@@ -12,6 +13,13 @@ const authorizeRoles = require("../middleware/roleMiddleware");
 const router = express.Router();
 
 router.get("/", getServices);
+
+router.get(
+  "/owner",
+  protect,
+  authorizeRoles("business_owner"),
+  getOwnerServices,
+);
 
 router.get("/:id", getServiceById);
 
