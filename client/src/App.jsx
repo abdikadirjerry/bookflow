@@ -7,6 +7,7 @@ import Booking from "./pages/Booking";
 import MyBookings from "./pages/MyBookings";
 import Dashboard from "./pages/Dashboard";
 import OwnerServices from "./pages/OwnerServices";
+import CreateService from "./pages/CreateService";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleRoute from "./routes/RoleRoute";
 
@@ -31,6 +32,8 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
 
           <Route path="/owner/services" element={<OwnerServices />} />
+
+          <Route path="/owner/services/new" element={<CreateService />} />
         </Route>
       </Routes>
     </BrowserRouter>
