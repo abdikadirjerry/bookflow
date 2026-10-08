@@ -29,4 +29,25 @@ const cancelBooking = async (bookingId) => {
   return response.data;
 };
 
-export { getAvailableSlots, createBooking, getMyBookings, cancelBooking };
+const getOwnerBookings = async () => {
+  const response = await api.get("/bookings/owner");
+
+  return response.data;
+};
+
+const updateBookingStatus = async (bookingId, status) => {
+  const response = await api.patch(`/bookings/${bookingId}/status`, {
+    status,
+  });
+
+  return response.data;
+};
+
+export {
+  getAvailableSlots,
+  createBooking,
+  getMyBookings,
+  cancelBooking,
+  getOwnerBookings,
+  updateBookingStatus,
+};
