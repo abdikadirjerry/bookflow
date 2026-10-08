@@ -3,6 +3,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Services from "./pages/Services";
 import ServiceDetails from "./pages/ServiceDetails";
+import Booking from "./pages/Booking";
+import MyBookings from "./pages/MyBookings";
 import ProtectedRoute from "./routes/ProtectedRoute";
 
 function App() {
@@ -14,7 +16,12 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/services" element={<Services />} />
+
           <Route path="/services/:serviceId" element={<ServiceDetails />} />
+
+          <Route path="/services/:serviceId/book" element={<Booking />} />
+
+          <Route path="/bookings" element={<MyBookings />} />
         </Route>
       </Routes>
     </BrowserRouter>
