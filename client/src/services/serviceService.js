@@ -12,4 +12,28 @@ const getServiceById = async (serviceId) => {
   return response.data;
 };
 
-export { getServices, getServiceById };
+const createService = async (serviceData) => {
+  const response = await api.post("/services", serviceData);
+
+  return response.data;
+};
+
+const updateService = async (serviceId, serviceData) => {
+  const response = await api.put(`/services/${serviceId}`, serviceData);
+
+  return response.data;
+};
+
+const deleteService = async (serviceId) => {
+  const response = await api.delete(`/services/${serviceId}`);
+
+  return response.data;
+};
+
+export {
+  getServices,
+  getServiceById,
+  createService,
+  updateService,
+  deleteService,
+};
