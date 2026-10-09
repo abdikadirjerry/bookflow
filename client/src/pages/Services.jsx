@@ -6,6 +6,7 @@ function Services() {
   const [services, setServices] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [sortOrder, setSortOrder] = useState("default");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -16,7 +17,6 @@ function Services() {
         setError("");
 
         const data = await getServices();
-
         setServices(data.services);
       } catch (error) {
         setError(
@@ -34,7 +34,7 @@ function Services() {
   const filteredServices = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return services.filter((service) => {
+    const matchingServices = services.filter((service) => {
       const matchesName = service.name.toLowerCase().includes(normalizedSearch);
 
       const matchesPrice =
@@ -42,11 +42,20 @@ function Services() {
 
       return matchesName && matchesPrice;
     });
-  }, [services, searchTerm, maxPrice]);
+
+    if (sortOrder === "low-to-high") {
+      matchingServices.sort((a, b) => Number(a.price) - Number(b.price));
+    } else if (sortOrder === "high-to-low") {
+      matchingServices.sort((a, b) => Number(b.price) - Number(a.price));
+    }
+
+    return matchingServices;
+  }, [services, searchTerm, maxPrice, sortOrder]);
 
   const clearFilters = () => {
     setSearchTerm("");
     setMaxPrice("");
+    setSortOrder("default");
   };
 
   return (
@@ -106,14 +115,38 @@ function Services() {
           </div>
 
           <div className="sm:col-span-2">
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={searchTerm === "" && maxPrice === ""}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            <label
+              htmlFor="sort-order"
+              className="mb-2 block text-sm font-semibold text-slate-700"
             >
-              Clear filters
-            </button>
+              Sort services by price
+            </label>
+
+            <select
+              id="sort-order"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 sm:max-w-md"
+            >
+              <option value="default">Default order</option>
+              <option value="low-to-high">Price: Low to high</option>
+              <option value="high-to-low">Price: High to low</option>
+            </select>
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={
+                  searchTerm === "" &&
+                  maxPrice === "" &&
+                  sortOrder === "default"
+                }
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Clear filters
+              </button>
+            </div>
           </div>
         </div>
 
