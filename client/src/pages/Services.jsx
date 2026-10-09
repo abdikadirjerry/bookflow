@@ -10,6 +10,8 @@ const SERVICE_CATEGORIES = [
   "Other",
 ];
 
+const SERVICES_PER_PAGE = 6;
+
 function Services() {
   const [services, setServices] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -18,6 +20,7 @@ function Services() {
   const [maxPrice, setMaxPrice] = useState("");
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
+  const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -41,6 +44,18 @@ function Services() {
 
     fetchServices();
   }, []);
+
+  // Reset to the first page when the filters or sorting change.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchTerm,
+    selectedCategory,
+    minPrice,
+    maxPrice,
+    selectedOwnerId,
+    sortOrder,
+  ]);
 
   const owners = useMemo(() => {
     const ownerMap = new Map();
@@ -104,6 +119,15 @@ function Services() {
     sortOrder,
   ]);
 
+  const totalPages = Math.ceil(filteredServices.length / SERVICES_PER_PAGE);
+
+  const startIndex = (currentPage - 1) * SERVICES_PER_PAGE;
+
+  const paginatedServices = filteredServices.slice(
+    startIndex,
+    startIndex + SERVICES_PER_PAGE,
+  );
+
   const clearFilters = () => {
     setSearchTerm("");
     setSelectedCategory("");
@@ -111,6 +135,7 @@ function Services() {
     setMaxPrice("");
     setSelectedOwnerId("");
     setSortOrder("default");
+    setCurrentPage(1);
   };
 
   const hasActiveFilters =
@@ -330,11 +355,16 @@ function Services() {
         {!isLoading && !error && filteredServices.length > 0 && (
           <>
             <p className="mb-4 text-sm text-slate-500" aria-live="polite">
-              Showing {filteredServices.length} of {services.length} services
+              Showing {startIndex + 1}–
+              {Math.min(
+                startIndex + SERVICES_PER_PAGE,
+                filteredServices.length,
+              )}{" "}
+              of {filteredServices.length} matching services
             </p>
 
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredServices.map((service) => (
+              {paginatedServices.map((service) => (
                 <article
                   key={service._id}
                   className="flex h-full flex-col rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:shadow-md"
@@ -383,6 +413,55 @@ function Services() {
                 </article>
               ))}
             </div>
+
+            {totalPages > 1 && (
+              <nav
+                aria-label="Service pages"
+                className="mt-8 flex flex-wrap items-center justify-center gap-2"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                {Array.from({ length: totalPages }, (_, index) => {
+                  const page = index + 1;
+
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      aria-current={currentPage === page ? "page" : undefined}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                        currentPage === page
+                          ? "bg-slate-900 text-white"
+                          : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </nav>
+            )}
           </>
         )}
       </div>
