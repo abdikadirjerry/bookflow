@@ -2,9 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getServices } from "../services/serviceService";
 
+const SERVICE_CATEGORIES = [
+  "Beauty & Personal Care",
+  "Photography",
+  "Home Services",
+  "Tutoring",
+  "Other",
+];
+
 function Services() {
   const [services, setServices] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
@@ -53,6 +62,13 @@ function Services() {
     const matchingServices = services.filter((service) => {
       const matchesName = service.name.toLowerCase().includes(normalizedSearch);
 
+      const category = SERVICE_CATEGORIES.includes(service.category)
+        ? service.category
+        : "Other";
+
+      const matchesCategory =
+        selectedCategory === "" || category === selectedCategory;
+
       const price = Number(service.price);
 
       const matchesMinPrice = minPrice === "" || price >= Number(minPrice);
@@ -62,7 +78,13 @@ function Services() {
       const matchesOwner =
         selectedOwnerId === "" || service.owner?._id === selectedOwnerId;
 
-      return matchesName && matchesMinPrice && matchesMaxPrice && matchesOwner;
+      return (
+        matchesName &&
+        matchesCategory &&
+        matchesMinPrice &&
+        matchesMaxPrice &&
+        matchesOwner
+      );
     });
 
     if (sortOrder === "low-to-high") {
@@ -72,15 +94,32 @@ function Services() {
     }
 
     return matchingServices;
-  }, [services, searchTerm, minPrice, maxPrice, selectedOwnerId, sortOrder]);
+  }, [
+    services,
+    searchTerm,
+    selectedCategory,
+    minPrice,
+    maxPrice,
+    selectedOwnerId,
+    sortOrder,
+  ]);
 
   const clearFilters = () => {
     setSearchTerm("");
+    setSelectedCategory("");
     setMinPrice("");
     setMaxPrice("");
     setSelectedOwnerId("");
     setSortOrder("default");
   };
+
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    selectedCategory !== "" ||
+    minPrice !== "" ||
+    maxPrice !== "" ||
+    selectedOwnerId !== "" ||
+    sortOrder !== "default";
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
@@ -116,6 +155,30 @@ function Services() {
               placeholder="e.g. Haircut"
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             />
+          </div>
+
+          <div>
+            <label
+              htmlFor="category-filter"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Filter by category
+            </label>
+
+            <select
+              id="category-filter"
+              value={selectedCategory}
+              onChange={(event) => setSelectedCategory(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="">All categories</option>
+
+              {SERVICE_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -205,13 +268,7 @@ function Services() {
               <button
                 type="button"
                 onClick={clearFilters}
-                disabled={
-                  searchTerm === "" &&
-                  minPrice === "" &&
-                  maxPrice === "" &&
-                  selectedOwnerId === "" &&
-                  sortOrder === "default"
-                }
+                disabled={!hasActiveFilters}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Clear filters
@@ -257,7 +314,7 @@ function Services() {
               </h2>
 
               <p className="mt-2 text-slate-600">
-                Try changing your search, provider, or price range.
+                Try changing your search, category, provider, or price range.
               </p>
 
               <button
@@ -292,6 +349,12 @@ function Services() {
                         ${service.price}
                       </span>
                     </div>
+
+                    <span className="mt-3 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                      {SERVICE_CATEGORIES.includes(service.category)
+                        ? service.category
+                        : "Other"}
+                    </span>
 
                     <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">
                       {service.description}
