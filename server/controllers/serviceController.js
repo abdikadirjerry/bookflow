@@ -46,15 +46,67 @@ const createService = async (req, res) => {
 
 const getServices = async (req, res) => {
   try {
-    const services = await Service.find({
+    console.log("getServices pagination test:", req.query);
+    const { page, limit } = req.query;
+
+    // Preserve the existing behavior until the frontend
+    // explicitly requests a paginated result.
+    const paginationRequested = page !== undefined || limit !== undefined;
+
+    const filter = {
       isActive: true,
-    })
+    };
+
+    const totalServices = await Service.countDocuments(filter);
+
+    let servicesQuery = Service.find(filter)
       .populate("owner", "name")
       .sort({ createdAt: -1 });
 
+    if (!paginationRequested) {
+      const services = await servicesQuery;
+
+      return res.status(200).json({
+        count: services.length,
+        services,
+      });
+    }
+
+    const pageNumber = Number(page ?? 1);
+    const pageSize = Number(limit ?? 6);
+
+    if (
+      !Number.isInteger(pageNumber) ||
+      pageNumber < 1 ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 100
+    ) {
+      return res.status(400).json({
+        message:
+          "Page must be a positive integer and limit must be an integer between 1 and 100",
+      });
+    }
+
+    const totalPages = Math.ceil(totalServices / pageSize);
+
+    servicesQuery = servicesQuery
+      .skip((pageNumber - 1) * pageSize)
+      .limit(pageSize);
+
+    const services = await servicesQuery;
+
     res.status(200).json({
-      count: services.length,
+      count: totalServices,
       services,
+      pagination: {
+        page: pageNumber,
+        limit: pageSize,
+        totalServices,
+        totalPages,
+        hasNextPage: pageNumber < totalPages,
+        hasPrevPage: pageNumber > 1,
+      },
     });
   } catch (error) {
     console.error("Get services error:", error);
