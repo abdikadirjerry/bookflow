@@ -5,6 +5,7 @@ import { getServices } from "../services/serviceService";
 function Services() {
   const [services, setServices] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
   const [isLoading, setIsLoading] = useState(true);
@@ -37,10 +38,13 @@ function Services() {
     const matchingServices = services.filter((service) => {
       const matchesName = service.name.toLowerCase().includes(normalizedSearch);
 
-      const matchesPrice =
-        maxPrice === "" || Number(service.price) <= Number(maxPrice);
+      const price = Number(service.price);
 
-      return matchesName && matchesPrice;
+      const matchesMinPrice = minPrice === "" || price >= Number(minPrice);
+
+      const matchesMaxPrice = maxPrice === "" || price <= Number(maxPrice);
+
+      return matchesName && matchesMinPrice && matchesMaxPrice;
     });
 
     if (sortOrder === "low-to-high") {
@@ -50,10 +54,11 @@ function Services() {
     }
 
     return matchingServices;
-  }, [services, searchTerm, maxPrice, sortOrder]);
+  }, [services, searchTerm, minPrice, maxPrice, sortOrder]);
 
   const clearFilters = () => {
     setSearchTerm("");
+    setMinPrice("");
     setMaxPrice("");
     setSortOrder("default");
   };
@@ -96,6 +101,46 @@ function Services() {
 
           <div>
             <label
+              htmlFor="sort-order"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Sort services by price
+            </label>
+
+            <select
+              id="sort-order"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="default">Default order</option>
+              <option value="low-to-high">Price: Low to high</option>
+              <option value="high-to-low">Price: High to low</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="min-price"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Minimum price ($)
+            </label>
+
+            <input
+              id="min-price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={minPrice}
+              onChange={(event) => setMinPrice(event.target.value)}
+              placeholder="e.g. 20"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            />
+          </div>
+
+          <div>
+            <label
               htmlFor="max-price"
               className="mb-2 block text-sm font-semibold text-slate-700"
             >
@@ -115,38 +160,19 @@ function Services() {
           </div>
 
           <div className="sm:col-span-2">
-            <label
-              htmlFor="sort-order"
-              className="mb-2 block text-sm font-semibold text-slate-700"
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={
+                searchTerm === "" &&
+                minPrice === "" &&
+                maxPrice === "" &&
+                sortOrder === "default"
+              }
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Sort services by price
-            </label>
-
-            <select
-              id="sort-order"
-              value={sortOrder}
-              onChange={(event) => setSortOrder(event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 sm:max-w-md"
-            >
-              <option value="default">Default order</option>
-              <option value="low-to-high">Price: Low to high</option>
-              <option value="high-to-low">Price: High to low</option>
-            </select>
-
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={clearFilters}
-                disabled={
-                  searchTerm === "" &&
-                  maxPrice === "" &&
-                  sortOrder === "default"
-                }
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Clear filters
-              </button>
-            </div>
+              Clear filters
+            </button>
           </div>
         </div>
 
@@ -187,7 +213,7 @@ function Services() {
               </h2>
 
               <p className="mt-2 text-slate-600">
-                Try changing your search or increasing your maximum price.
+                Try changing your search or price range.
               </p>
 
               <button
