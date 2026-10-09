@@ -3,7 +3,7 @@ const Service = require("../models/Service");
 
 const createService = async (req, res) => {
   try {
-    const { name, description, duration, price } = req.body;
+    const { name, description, duration, price, category } = req.body;
 
     if (
       !name ||
@@ -22,6 +22,7 @@ const createService = async (req, res) => {
       description,
       duration,
       price,
+      ...(category !== undefined && { category }),
     });
 
     res.status(201).json({
@@ -116,7 +117,7 @@ const getServiceById = async (req, res) => {
 
 const updateService = async (req, res) => {
   try {
-    const { name, description, duration, price, isActive } = req.body;
+    const { name, description, duration, price, isActive, category } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({
@@ -143,7 +144,8 @@ const updateService = async (req, res) => {
       description === undefined &&
       duration === undefined &&
       price === undefined &&
-      isActive === undefined
+      isActive === undefined &&
+      category === undefined
     ) {
       return res.status(400).json({
         message: "At least one field is required to update the service",
@@ -168,6 +170,10 @@ const updateService = async (req, res) => {
 
     if (isActive !== undefined) {
       service.isActive = isActive;
+    }
+
+    if (category !== undefined) {
+      service.category = category;
     }
 
     await service.save();
