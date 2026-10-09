@@ -5,6 +5,7 @@ import { getServices } from "../services/serviceService";
 function Services() {
   const [services, setServices] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -33,10 +34,20 @@ function Services() {
   const filteredServices = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return services.filter((service) =>
-      service.name.toLowerCase().includes(normalizedSearch),
-    );
-  }, [services, searchTerm]);
+    return services.filter((service) => {
+      const matchesName = service.name.toLowerCase().includes(normalizedSearch);
+
+      const matchesPrice =
+        maxPrice === "" || Number(service.price) <= Number(maxPrice);
+
+      return matchesName && matchesPrice;
+    });
+  }, [services, searchTerm, maxPrice]);
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setMaxPrice("");
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
@@ -55,22 +66,55 @@ function Services() {
           </p>
         </div>
 
-        <div className="mb-8">
-          <label
-            htmlFor="service-search"
-            className="mb-2 block text-sm font-semibold text-slate-700"
-          >
-            Search services
-          </label>
+        <div className="mb-8 grid gap-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:grid-cols-2 sm:p-6">
+          <div>
+            <label
+              htmlFor="service-search"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Search by name
+            </label>
 
-          <input
-            id="service-search"
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search by service name..."
-            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 sm:max-w-md"
-          />
+            <input
+              id="service-search"
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="e.g. Haircut"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="max-price"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Maximum price ($)
+            </label>
+
+            <input
+              id="max-price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={maxPrice}
+              onChange={(event) => setMaxPrice(event.target.value)}
+              placeholder="e.g. 50"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={searchTerm === "" && maxPrice === ""}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Clear filters
+            </button>
+          </div>
         </div>
 
         {isLoading && (
@@ -110,15 +154,15 @@ function Services() {
               </h2>
 
               <p className="mt-2 text-slate-600">
-                Try another service name or clear your search.
+                Try changing your search or increasing your maximum price.
               </p>
 
               <button
                 type="button"
-                onClick={() => setSearchTerm("")}
+                onClick={clearFilters}
                 className="mt-5 rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
               >
-                Clear search
+                Clear filters
               </button>
             </div>
           )}
