@@ -7,6 +7,7 @@ function Services() {
   const [searchTerm, setSearchTerm] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [selectedOwnerId, setSelectedOwnerId] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -32,6 +33,20 @@ function Services() {
     fetchServices();
   }, []);
 
+  const owners = useMemo(() => {
+    const ownerMap = new Map();
+
+    services.forEach((service) => {
+      if (service.owner?._id && service.owner?.name) {
+        ownerMap.set(service.owner._id, service.owner.name);
+      }
+    });
+
+    return Array.from(ownerMap, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [services]);
+
   const filteredServices = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -44,7 +59,10 @@ function Services() {
 
       const matchesMaxPrice = maxPrice === "" || price <= Number(maxPrice);
 
-      return matchesName && matchesMinPrice && matchesMaxPrice;
+      const matchesOwner =
+        selectedOwnerId === "" || service.owner?._id === selectedOwnerId;
+
+      return matchesName && matchesMinPrice && matchesMaxPrice && matchesOwner;
     });
 
     if (sortOrder === "low-to-high") {
@@ -54,12 +72,13 @@ function Services() {
     }
 
     return matchingServices;
-  }, [services, searchTerm, minPrice, maxPrice, sortOrder]);
+  }, [services, searchTerm, minPrice, maxPrice, selectedOwnerId, sortOrder]);
 
   const clearFilters = () => {
     setSearchTerm("");
     setMinPrice("");
     setMaxPrice("");
+    setSelectedOwnerId("");
     setSortOrder("default");
   };
 
@@ -101,21 +120,25 @@ function Services() {
 
           <div>
             <label
-              htmlFor="sort-order"
+              htmlFor="provider-filter"
               className="mb-2 block text-sm font-semibold text-slate-700"
             >
-              Sort services by price
+              Filter by provider
             </label>
 
             <select
-              id="sort-order"
-              value={sortOrder}
-              onChange={(event) => setSortOrder(event.target.value)}
+              id="provider-filter"
+              value={selectedOwnerId}
+              onChange={(event) => setSelectedOwnerId(event.target.value)}
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             >
-              <option value="default">Default order</option>
-              <option value="low-to-high">Price: Low to high</option>
-              <option value="high-to-low">Price: High to low</option>
+              <option value="">All providers</option>
+
+              {owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -160,19 +183,40 @@ function Services() {
           </div>
 
           <div className="sm:col-span-2">
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={
-                searchTerm === "" &&
-                minPrice === "" &&
-                maxPrice === "" &&
-                sortOrder === "default"
-              }
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            <label
+              htmlFor="sort-order"
+              className="mb-2 block text-sm font-semibold text-slate-700"
             >
-              Clear filters
-            </button>
+              Sort services by price
+            </label>
+
+            <select
+              id="sort-order"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 sm:max-w-md"
+            >
+              <option value="default">Default order</option>
+              <option value="low-to-high">Price: Low to high</option>
+              <option value="high-to-low">Price: High to low</option>
+            </select>
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={
+                  searchTerm === "" &&
+                  minPrice === "" &&
+                  maxPrice === "" &&
+                  selectedOwnerId === "" &&
+                  sortOrder === "default"
+                }
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Clear filters
+              </button>
+            </div>
           </div>
         </div>
 
@@ -213,7 +257,7 @@ function Services() {
               </h2>
 
               <p className="mt-2 text-slate-600">
-                Try changing your search or price range.
+                Try changing your search, provider, or price range.
               </p>
 
               <button
