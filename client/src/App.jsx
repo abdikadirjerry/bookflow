@@ -11,6 +11,7 @@ import CreateService from "./pages/CreateService";
 import EditService from "./pages/EditService";
 import OwnerBookings from "./pages/OwnerBookings";
 import OwnerCustomers from "./pages/OwnerCustomers";
+import OwnerAvailability from "./pages/OwnerAvailability";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleRoute from "./routes/RoleRoute";
 
@@ -38,6 +39,7 @@ function App() {
           />
           <Route path="/owner/bookings" element={<OwnerBookings />} />
           <Route path="/owner/customers" element={<OwnerCustomers />} />
+          <Route path="/owner/availability" element={<OwnerAvailability />} />
         </Route>
       </Routes>
     </BrowserRouter>
