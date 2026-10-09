@@ -16,6 +16,22 @@ const serviceSchema = new mongoose.Schema(
       maxlength: [100, "Service name cannot exceed 100 characters"],
     },
 
+    category: {
+      type: String,
+      required: [true, "Service category is required"],
+      enum: {
+        values: [
+          "Beauty & Personal Care",
+          "Photography",
+          "Home Services",
+          "Tutoring",
+          "Other",
+        ],
+        message: "Please select a valid service category",
+      },
+      default: "Other",
+    },
+
     description: {
       type: String,
       required: [true, "Service description is required"],
