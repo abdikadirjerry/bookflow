@@ -141,6 +141,16 @@ const createBooking = async (req, res) => {
     const startMinutes = startHour * 60 + startMinute;
     const endMinutes = startMinutes + service.duration;
 
+    // NEW: Reject booking times that have already arrived or passed today.
+    if (
+      dateObject.getTime() === today.getTime() &&
+      startMinutes <= now.getHours() * 60 + now.getMinutes()
+    ) {
+      return res.status(400).json({
+        message: "Booking time must be in the future",
+      });
+    }
+
     if (startMinutes < availabilityStartMinutes) {
       return res.status(400).json({
         message: `The business opens at ${dayAvailability.startTime}`,
@@ -329,11 +339,20 @@ const getAvailableSlots = async (req, res) => {
 
     const slots = [];
 
+    // NEW: Capture the current time in minutes since midnight.
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const isToday = dateObject.getTime() === today.getTime();
+
     for (
       let startMinutes = businessStartMinutes;
       startMinutes + service.duration <= businessEndMinutes;
       startMinutes += service.duration
     ) {
+      // NEW: Do not return slots whose start time has arrived or passed.
+      if (isToday && startMinutes <= currentMinutes) {
+        continue;
+      }
+
       const endMinutes = startMinutes + service.duration;
 
       const startTime = minutesToTime(startMinutes);
