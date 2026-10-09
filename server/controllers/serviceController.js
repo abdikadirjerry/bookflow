@@ -1,6 +1,14 @@
 const mongoose = require("mongoose");
 const Service = require("../models/Service");
 
+const SERVICE_CATEGORIES = [
+  "Beauty & Personal Care",
+  "Photography",
+  "Home Services",
+  "Tutoring",
+  "Other",
+];
+
 const createService = async (req, res) => {
   try {
     const { name, description, duration, price, category } = req.body;
@@ -46,34 +54,19 @@ const createService = async (req, res) => {
 
 const getServices = async (req, res) => {
   try {
-    console.log("getServices pagination test:", req.query);
-    const { page, limit } = req.query;
+    const {
+      page = "1",
+      limit = "6",
+      search = "",
+      category = "",
+      owner = "",
+      minPrice = "",
+      maxPrice = "",
+      sort = "default",
+    } = req.query;
 
-    // Preserve the existing behavior until the frontend
-    // explicitly requests a paginated result.
-    const paginationRequested = page !== undefined || limit !== undefined;
-
-    const filter = {
-      isActive: true,
-    };
-
-    const totalServices = await Service.countDocuments(filter);
-
-    let servicesQuery = Service.find(filter)
-      .populate("owner", "name")
-      .sort({ createdAt: -1 });
-
-    if (!paginationRequested) {
-      const services = await servicesQuery;
-
-      return res.status(200).json({
-        count: services.length,
-        services,
-      });
-    }
-
-    const pageNumber = Number(page ?? 1);
-    const pageSize = Number(limit ?? 6);
+    const pageNumber = Number(page);
+    const pageSize = Number(limit);
 
     if (
       !Number.isInteger(pageNumber) ||
@@ -88,13 +81,106 @@ const getServices = async (req, res) => {
       });
     }
 
+    if (typeof search !== "string" || typeof category !== "string") {
+      return res.status(400).json({
+        message: "Search and category must be strings",
+      });
+    }
+
+    if (typeof owner !== "string") {
+      return res.status(400).json({
+        message: "Provider ID must be a string",
+      });
+    }
+
+    if (
+      typeof minPrice !== "string" ||
+      typeof maxPrice !== "string" ||
+      (minPrice !== "" &&
+        (!Number.isFinite(Number(minPrice)) || Number(minPrice) < 0)) ||
+      (maxPrice !== "" &&
+        (!Number.isFinite(Number(maxPrice)) || Number(maxPrice) < 0))
+    ) {
+      return res.status(400).json({
+        message: "Price limits must be valid non-negative numbers",
+      });
+    }
+
+    if (
+      minPrice !== "" &&
+      maxPrice !== "" &&
+      Number(minPrice) > Number(maxPrice)
+    ) {
+      return res.status(400).json({
+        message: "Minimum price cannot exceed maximum price",
+      });
+    }
+
+    if (!["default", "low-to-high", "high-to-low"].includes(sort)) {
+      return res.status(400).json({
+        message: "Invalid sort option",
+      });
+    }
+
+    if (category !== "" && !SERVICE_CATEGORIES.includes(category)) {
+      return res.status(400).json({
+        message: "Invalid service category",
+      });
+    }
+
+    if (owner !== "" && !mongoose.Types.ObjectId.isValid(owner)) {
+      return res.status(400).json({
+        message: "Invalid provider ID",
+      });
+    }
+
+    const filter = {
+      isActive: true,
+    };
+
+    if (search.trim() !== "") {
+      filter.name = {
+        $regex: search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        $options: "i",
+      };
+    }
+
+    if (category !== "") {
+      filter.category = category;
+    }
+
+    if (owner !== "") {
+      filter.owner = owner;
+    }
+
+    if (minPrice !== "" || maxPrice !== "") {
+      filter.price = {};
+
+      if (minPrice !== "") {
+        filter.price.$gte = Number(minPrice);
+      }
+
+      if (maxPrice !== "") {
+        filter.price.$lte = Number(maxPrice);
+      }
+    }
+
+    let sortOption = { createdAt: -1 };
+
+    if (sort === "low-to-high") {
+      sortOption = { price: 1, createdAt: -1 };
+    } else if (sort === "high-to-low") {
+      sortOption = { price: -1, createdAt: -1 };
+    }
+
+    const totalServices = await Service.countDocuments(filter);
     const totalPages = Math.ceil(totalServices / pageSize);
 
-    servicesQuery = servicesQuery
+    const services = await Service.find(filter)
+      .populate("owner", "name")
+      .sort(sortOption)
       .skip((pageNumber - 1) * pageSize)
       .limit(pageSize);
-
-    const services = await servicesQuery;
 
     res.status(200).json({
       count: totalServices,
