@@ -16,6 +16,48 @@ const SORT_OPTIONS = [
   { value: "oldest", label: "Oldest first" },
 ];
 
+function formatBookingDate(dateString) {
+  if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString || "Date unavailable";
+  }
+
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return dateString;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatBookingTime(timeString) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeString || "");
+
+  if (!match) {
+    return timeString || "Time unavailable";
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const date = new Date(2000, 0, 1, hours, minutes);
+
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -263,10 +305,6 @@ function MyBookings() {
     await loadBookings();
   };
 
-  const clearSearch = () => {
-    setSearchQuery("");
-  };
-
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedStatus("all");
@@ -317,26 +355,14 @@ function MyBookings() {
                 Search bookings
               </label>
 
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  id="booking-search"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search by service name or reference..."
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                />
-
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                  >
-                    Clear search
-                  </button>
-                )}
-              </div>
+              <input
+                id="booking-search"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by service name or reference..."
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              />
             </div>
 
             <div>
@@ -418,11 +444,6 @@ function MyBookings() {
                   {dateRangeError}
                 </p>
               )}
-
-              <p className="mt-2 text-xs text-slate-500">
-                Choose either date or both. The selected dates are included in
-                the results.
-              </p>
             </div>
 
             <div className="max-w-xs">
@@ -635,7 +656,7 @@ function MyBookings() {
                       <p className="text-sm text-slate-500">Date</p>
 
                       <p className="mt-1 font-semibold text-slate-900">
-                        {booking.date}
+                        {formatBookingDate(booking.date)}
                       </p>
                     </div>
 
@@ -643,7 +664,8 @@ function MyBookings() {
                       <p className="text-sm text-slate-500">Time</p>
 
                       <p className="mt-1 font-semibold text-slate-900">
-                        {booking.startTime} - {booking.endTime}
+                        {formatBookingTime(booking.startTime)} –{" "}
+                        {formatBookingTime(booking.endTime)}
                       </p>
                     </div>
 
