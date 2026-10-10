@@ -203,6 +203,43 @@ const getServices = async (req, res) => {
   }
 };
 
+const getServiceProviders = async (req, res) => {
+  try {
+    const services = await Service.find({ isActive: true })
+      .select("owner")
+      .populate("owner", "name")
+      .lean();
+
+    const providersById = new Map();
+
+    services.forEach((service) => {
+      const owner = service.owner;
+
+      if (owner?._id && owner.name) {
+        providersById.set(owner._id.toString(), {
+          id: owner._id,
+          name: owner.name,
+        });
+      }
+    });
+
+    const providers = Array.from(providersById.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    res.status(200).json({
+      count: providers.length,
+      providers,
+    });
+  } catch (error) {
+    console.error("Get service providers error:", error);
+
+    res.status(500).json({
+      message: "Server error while fetching service providers",
+    });
+  }
+};
+
 const getOwnerServices = async (req, res) => {
   try {
     const services = await Service.find({
@@ -382,6 +419,7 @@ const deleteService = async (req, res) => {
 module.exports = {
   createService,
   getServices,
+  getServiceProviders,
   getOwnerServices,
   getServiceById,
   updateService,
