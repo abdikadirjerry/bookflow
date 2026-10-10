@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { cancelBooking, getMyBookings } from "../services/bookingService";
+import {
+  formatBookingDate,
+  formatBookingTime,
+} from "../utils/bookingFormatters";
 
 const BOOKING_STATUSES = [
   "all",
@@ -15,48 +19,6 @@ const SORT_OPTIONS = [
   { value: "newest", label: "Newest first" },
   { value: "oldest", label: "Oldest first" },
 ];
-
-function formatBookingDate(dateString) {
-  if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    return dateString || "Date unavailable";
-  }
-
-  const [year, month, day] = dateString.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return dateString;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-function formatBookingTime(timeString) {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeString || "");
-
-  if (!match) {
-    return timeString || "Time unavailable";
-  }
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  const date = new Date(2000, 0, 1, hours, minutes);
-
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
 
 function MyBookings() {
   const [bookings, setBookings] = useState([]);
@@ -115,11 +77,7 @@ function MyBookings() {
   const getBookingReference = (booking) => {
     const bookingId = booking._id || booking.id;
 
-    if (!bookingId) {
-      return null;
-    }
-
-    return bookingId.toString().slice(-8).toUpperCase();
+    return bookingId ? bookingId.toString().slice(-8).toUpperCase() : null;
   };
 
   const handleCopyReference = async (booking) => {
@@ -148,9 +106,8 @@ function MyBookings() {
     }
   };
 
-  const canCancelBooking = (booking) => {
-    return booking.status === "pending" || booking.status === "confirmed";
-  };
+  const canCancelBooking = (booking) =>
+    booking.status === "pending" || booking.status === "confirmed";
 
   const getAppointmentTimestamp = (booking) => {
     if (!booking.date || !booking.startTime) {
@@ -182,7 +139,6 @@ function MyBookings() {
     }
 
     const timestamp = new Date(booking.createdAt).getTime();
-
     return Number.isNaN(timestamp) ? 0 : timestamp;
   };
 
@@ -238,9 +194,7 @@ function MyBookings() {
       return matchesStatus && matchesSearch && matchesDateRange;
     });
 
-    const sorted = [...filtered];
-
-    sorted.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       if (sortBy === "newest") {
         return getCreationTimestamp(b) - getCreationTimestamp(a);
       }
@@ -251,8 +205,6 @@ function MyBookings() {
 
       return getAppointmentTimestamp(a) - getAppointmentTimestamp(b);
     });
-
-    return sorted;
   }, [
     bookings,
     selectedStatus,
@@ -281,10 +233,7 @@ function MyBookings() {
       setBookings((currentBookings) =>
         currentBookings.map((booking) =>
           (booking._id || booking.id) === bookingId
-            ? {
-                ...booking,
-                status: data.booking?.status || "cancelled",
-              }
+            ? { ...booking, status: data.booking?.status || "cancelled" }
             : booking,
         ),
       );
@@ -328,7 +277,6 @@ function MyBookings() {
               <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
                 My bookings
               </h1>
-
               <p className="mt-3 text-slate-600">
                 View and manage your appointments.
               </p>
@@ -354,7 +302,6 @@ function MyBookings() {
               >
                 Search bookings
               </label>
-
               <input
                 id="booking-search"
                 type="search"
@@ -369,7 +316,6 @@ function MyBookings() {
               <h2 className="mb-3 text-sm font-semibold text-slate-700">
                 Filter by status
               </h2>
-
               <div className="flex flex-wrap gap-2">
                 {BOOKING_STATUSES.map((status) => {
                   const isSelected = selectedStatus === status;
@@ -386,10 +332,8 @@ function MyBookings() {
                           : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
                       }`}
                     >
-                      {status === "all" ? "All" : formatStatus(status)}
-                      {" ("}
-                      {bookingCounts[status]}
-                      {")"}
+                      {status === "all" ? "All" : formatStatus(status)} (
+                      {bookingCounts[status]})
                     </button>
                   );
                 })}
@@ -400,7 +344,6 @@ function MyBookings() {
               <h2 className="mb-3 text-sm font-semibold text-slate-700">
                 Filter by appointment date
               </h2>
-
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label
@@ -409,7 +352,6 @@ function MyBookings() {
                   >
                     From date
                   </label>
-
                   <input
                     id="booking-from-date"
                     type="date"
@@ -427,7 +369,6 @@ function MyBookings() {
                   >
                     To date
                   </label>
-
                   <input
                     id="booking-to-date"
                     type="date"
@@ -453,7 +394,6 @@ function MyBookings() {
               >
                 Sort bookings
               </label>
-
               <select
                 id="booking-sort"
                 value={sortBy}
@@ -503,9 +443,7 @@ function MyBookings() {
             <h2 className="font-semibold text-red-800">
               Unable to load bookings
             </h2>
-
             <p className="mt-2 text-sm text-red-700">{error}</p>
-
             <button
               type="button"
               onClick={loadBookings}
@@ -539,11 +477,9 @@ function MyBookings() {
             <h2 className="text-xl font-bold text-slate-900">
               No bookings yet
             </h2>
-
             <p className="mt-2 text-slate-600">
               You haven't booked any services yet.
             </p>
-
             <Link
               to="/services"
               className="mt-6 inline-block rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
@@ -563,13 +499,11 @@ function MyBookings() {
                   ? "Check your date range"
                   : "No matching bookings"}
               </h2>
-
               <p className="mt-2 text-slate-600">
                 {dateRangeError
                   ? dateRangeError
                   : "No bookings match your current filters. Try changing your search, status, or date range."}
               </p>
-
               {hasActiveFilters && (
                 <button
                   type="button"
@@ -601,7 +535,6 @@ function MyBookings() {
                       <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                         Appointment
                       </p>
-
                       <h2 className="mt-1 text-xl font-bold text-slate-900">
                         {booking.service?.name || "Service"}
                       </h2>
@@ -610,7 +543,6 @@ function MyBookings() {
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                           Booking reference
                         </p>
-
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <p className="font-mono text-sm font-bold text-slate-800">
                             {bookingReference
@@ -625,17 +557,7 @@ function MyBookings() {
                               className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                               aria-label={`Copy reference ${bookingReference}`}
                             >
-                              {wasCopied ? (
-                                <>
-                                  <span aria-hidden="true">✓</span>
-                                  Copied!
-                                </>
-                              ) : (
-                                <>
-                                  <span aria-hidden="true">⧉</span>
-                                  Copy
-                                </>
-                              )}
+                              {wasCopied ? "✓ Copied!" : "⧉ Copy"}
                             </button>
                           )}
                         </div>
@@ -654,15 +576,13 @@ function MyBookings() {
                   <div className="mt-6 grid gap-4 border-t border-slate-200 pt-6 sm:grid-cols-3">
                     <div>
                       <p className="text-sm text-slate-500">Date</p>
-
-                      <p className="mt-1 font-semibold text-slate-900">
+                      <p className="mt-1 font-semibold leading-relaxed text-slate-900">
                         {formatBookingDate(booking.date)}
                       </p>
                     </div>
 
                     <div>
                       <p className="text-sm text-slate-500">Time</p>
-
                       <p className="mt-1 font-semibold text-slate-900">
                         {formatBookingTime(booking.startTime)} –{" "}
                         {formatBookingTime(booking.endTime)}
@@ -671,7 +591,6 @@ function MyBookings() {
 
                     <div>
                       <p className="text-sm text-slate-500">Price</p>
-
                       <p className="mt-1 font-semibold text-slate-900">
                         ${booking.service?.price ?? "—"}
                       </p>
@@ -681,7 +600,6 @@ function MyBookings() {
                   {booking.service?.owner && (
                     <div className="mt-6 border-t border-slate-200 pt-6">
                       <p className="text-sm text-slate-500">Provided by</p>
-
                       <p className="mt-1 font-semibold text-slate-900">
                         {booking.service.owner.name}
                       </p>
