@@ -10,11 +10,18 @@ const BOOKING_STATUSES = [
   "cancelled",
 ];
 
+const SORT_OPTIONS = [
+  { value: "upcoming", label: "Upcoming first" },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+];
+
 function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [sortBy, setSortBy] = useState("upcoming");
 
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
@@ -26,7 +33,6 @@ function MyBookings() {
         setError("");
 
         const data = await getMyBookings();
-
         setBookings(data.bookings || []);
       } catch (error) {
         setError(
@@ -74,6 +80,42 @@ function MyBookings() {
     return booking.status === "pending" || booking.status === "confirmed";
   };
 
+  const getAppointmentTimestamp = (booking) => {
+    if (!booking.date || !booking.startTime) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(booking.date);
+    const timeMatch = /^(\d{2}):(\d{2})$/.exec(booking.startTime);
+
+    if (!dateMatch || !timeMatch) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const [, year, month, day] = dateMatch;
+    const [, hours, minutes] = timeMatch;
+
+    return new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hours),
+      Number(minutes),
+    ).getTime();
+  };
+
+  const getCreationTimestamp = (booking) => {
+    const createdAt = booking.createdAt;
+
+    if (!createdAt) {
+      return 0;
+    }
+
+    const timestamp = new Date(createdAt).getTime();
+
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  };
+
   const bookingCounts = useMemo(() => {
     const counts = {
       all: bookings.length,
@@ -93,12 +135,30 @@ function MyBookings() {
   }, [bookings]);
 
   const filteredBookings = useMemo(() => {
-    if (selectedStatus === "all") {
-      return bookings;
-    }
+    const filtered =
+      selectedStatus === "all"
+        ? bookings
+        : bookings.filter((booking) => booking.status === selectedStatus);
 
-    return bookings.filter((booking) => booking.status === selectedStatus);
-  }, [bookings, selectedStatus]);
+    const sorted = [...filtered];
+
+    sorted.sort((a, b) => {
+      if (sortBy === "newest") {
+        return getCreationTimestamp(b) - getCreationTimestamp(a);
+      }
+
+      if (sortBy === "oldest") {
+        return getCreationTimestamp(a) - getCreationTimestamp(b);
+      }
+
+      const timestampA = getAppointmentTimestamp(a);
+      const timestampB = getAppointmentTimestamp(b);
+
+      return timestampA - timestampB;
+    });
+
+    return sorted;
+  }, [bookings, selectedStatus, sortBy]);
 
   const handleCancelBooking = async (bookingId) => {
     const confirmed = window.confirm(
@@ -156,34 +216,58 @@ function MyBookings() {
         </div>
 
         {!isLoading && !error && (
-          <div className="mb-6">
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">
-              Filter by status
-            </h2>
+          <div className="mb-6 space-y-5">
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-slate-700">
+                Filter by status
+              </h2>
 
-            <div className="flex flex-wrap gap-2">
-              {BOOKING_STATUSES.map((status) => {
-                const isSelected = selectedStatus === status;
+              <div className="flex flex-wrap gap-2">
+                {BOOKING_STATUSES.map((status) => {
+                  const isSelected = selectedStatus === status;
 
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => setSelectedStatus(status)}
-                    aria-pressed={isSelected}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                      isSelected
-                        ? "bg-slate-900 text-white"
-                        : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    {status === "all" ? "All" : formatStatus(status)}
-                    {" ("}
-                    {bookingCounts[status]}
-                    {")"}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setSelectedStatus(status)}
+                      aria-pressed={isSelected}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                        isSelected
+                          ? "bg-slate-900 text-white"
+                          : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {status === "all" ? "All" : formatStatus(status)}
+                      {" ("}
+                      {bookingCounts[status]}
+                      {")"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="max-w-xs">
+              <label
+                htmlFor="booking-sort"
+                className="mb-2 block text-sm font-semibold text-slate-700"
+              >
+                Sort bookings
+              </label>
+
+              <select
+                id="booking-sort"
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}
