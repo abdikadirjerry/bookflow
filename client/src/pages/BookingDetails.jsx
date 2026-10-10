@@ -1,88 +1,217 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getMyBookings } from "../services/bookingService";
+import {
+  formatBookingDate,
+  formatBookingTime,
+} from "../utils/bookingFormatters";
 
-function formatBookingDate(dateString) {
-  if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    return dateString || "Date unavailable";
-  }
+const BOOKING_STEPS = [
+  {
+    status: "pending",
+    title: "Booking requested",
+    description: "Your booking request has been submitted.",
+  },
+  {
+    status: "confirmed",
+    title: "Booking confirmed",
+    description: "The provider has accepted your booking.",
+  },
+  {
+    status: "completed",
+    title: "Booking completed",
+    description: "This booking has been completed.",
+  },
+];
 
-  const [year, month, day] = dateString.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return dateString;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+function getBookingId(booking) {
+  return booking?._id || booking?.id || "";
 }
 
-function formatBookingTime(timeString) {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeString || "");
-
-  if (!match) {
-    return timeString || "Time unavailable";
-  }
-
-  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
-
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
+function getBookingStatus(booking) {
+  return String(booking?.status || "pending").toLowerCase();
 }
 
-function getBookingReference(booking) {
-  const bookingId = booking?._id || booking?.id;
-
-  return bookingId ? bookingId.toString().slice(-8).toUpperCase() : null;
-}
-
-function getStatusClasses(status) {
-  const statusClasses = {
-    pending: "bg-yellow-50 text-yellow-700 ring-yellow-200",
-    confirmed: "bg-green-50 text-green-700 ring-green-200",
-    completed: "bg-blue-50 text-blue-700 ring-blue-200",
-    cancelled: "bg-red-50 text-red-700 ring-red-200",
+function getStatusLabel(status) {
+  const labels = {
+    pending: "Pending",
+    confirmed: "Confirmed",
+    completed: "Completed",
+    cancelled: "Cancelled",
   };
 
-  return statusClasses[status] || "bg-slate-50 text-slate-700 ring-slate-200";
+  return labels[status] || status;
 }
 
-function formatStatus(status) {
-  if (!status) {
-    return "Unknown";
+function getStatusStyles(status) {
+  const styles = {
+    pending: "bg-yellow-100 text-yellow-800",
+    confirmed: "bg-blue-100 text-blue-800",
+    completed: "bg-green-100 text-green-800",
+    cancelled: "bg-red-100 text-red-800",
+  };
+
+  return styles[status] || "bg-gray-100 text-gray-700";
+}
+
+function getTimelineState(stepStatus, currentStatus) {
+  if (currentStatus === "cancelled") {
+    return "cancelled";
   }
 
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  const currentIndex = BOOKING_STEPS.findIndex(
+    (step) => step.status === currentStatus,
+  );
+  const stepIndex = BOOKING_STEPS.findIndex(
+    (step) => step.status === stepStatus,
+  );
+
+  if (currentIndex === -1 || stepIndex === -1) {
+    return "upcoming";
+  }
+
+  if (stepIndex < currentIndex) {
+    return "complete";
+  }
+
+  if (stepIndex === currentIndex) {
+    return "current";
+  }
+
+  return "upcoming";
 }
 
-function BookingDetails() {
+function StatusTimeline({ status }) {
+  if (status === "cancelled") {
+    return (
+      <section className="rounded-xl border border-red-200 bg-red-50 p-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg text-red-700">
+            ×
+          </span>
+          <div>
+            <h3 className="font-semibold text-red-900">Booking cancelled</h3>
+            <p className="mt-1 text-sm text-red-800">
+              This booking will not proceed. You can return to your bookings to
+              review your other reservations.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-5">
+      <h2 className="text-lg font-semibold text-gray-900">Booking progress</h2>
+      <p className="mt-1 text-sm text-gray-500">
+        Follow the status of your booking below.
+      </p>
+
+      <ol className="mt-6">
+        {BOOKING_STEPS.map((step, index) => {
+          const state = getTimelineState(step.status, status);
+          const isLast = index === BOOKING_STEPS.length - 1;
+
+          return (
+            <li
+              key={step.status}
+              className="relative flex gap-4 pb-7 last:pb-0"
+            >
+              {!isLast && (
+                <span
+                  aria-hidden="true"
+                  className={`absolute left-[15px] top-8 h-[calc(100%-8px)] w-0.5 ${
+                    state === "complete" ? "bg-green-500" : "bg-gray-200"
+                  }`}
+                />
+              )}
+
+              <span
+                className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-semibold ${
+                  state === "complete"
+                    ? "border-green-600 bg-green-600 text-white"
+                    : state === "current"
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-400"
+                }`}
+                aria-label={
+                  state === "complete"
+                    ? "Completed step"
+                    : state === "current"
+                      ? "Current step"
+                      : "Upcoming step"
+                }
+              >
+                {state === "complete" ? "✓" : index + 1}
+              </span>
+
+              <div className="pt-1">
+                <h3
+                  className={`font-medium ${
+                    state === "upcoming" ? "text-gray-500" : "text-gray-900"
+                  }`}
+                >
+                  {step.title}
+                  {state === "current" && (
+                    <span className="ml-2 text-xs font-normal text-blue-700">
+                      Current status
+                    </span>
+                  )}
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">{step.description}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      {status === "pending" && (
+        <p className="mt-5 rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
+          Your booking is waiting for the provider's response.
+        </p>
+      )}
+
+      {status === "confirmed" && (
+        <p className="mt-5 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+          Your booking is confirmed. Check the date and time below before your
+          appointment.
+        </p>
+      )}
+
+      {status === "completed" && (
+        <p className="mt-5 rounded-lg bg-green-50 p-3 text-sm text-green-800">
+          This booking is marked as completed.
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default function BookingDetails() {
   const { bookingId } = useParams();
+
   const [booking, setBooking] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
 
   const loadBooking = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError("");
+    setLoading(true);
+    setError("");
 
-      const data = await getMyBookings();
-      const bookings = data.bookings || [];
+    try {
+      const result = await getMyBookings();
+      const bookings = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.bookings)
+          ? result.bookings
+          : Array.isArray(result?.data)
+            ? result.data
+            : [];
 
       const foundBooking = bookings.find(
-        (item) => String(item._id || item.id) === String(bookingId),
+        (item) => getBookingId(item) === bookingId,
       );
 
       if (!foundBooking) {
@@ -92,13 +221,14 @@ function BookingDetails() {
       }
 
       setBooking(foundBooking);
-    } catch (error) {
+    } catch (err) {
+      setBooking(null);
       setError(
-        error.response?.data?.message ||
+        err?.response?.data?.message ||
           "Unable to load this booking. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }, [bookingId]);
 
@@ -106,146 +236,186 @@ function BookingDetails() {
     loadBooking();
   }, [loadBooking]);
 
-  const bookingReference = getBookingReference(booking);
+  async function handleCopyReference() {
+    const fullId = getBookingId(booking);
+
+    if (!fullId) {
+      setCopyMessage("Booking reference is unavailable.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(fullId);
+      setCopyMessage("Full booking ID copied.");
+    } catch {
+      setCopyMessage(`Full booking ID: ${fullId}`);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <p className="text-gray-600">Loading booking details...</p>
+      </main>
+    );
+  }
+
+  if (error || !booking) {
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+          <h1 className="text-lg font-semibold text-red-900">
+            Unable to show booking
+          </h1>
+          <p className="mt-2 text-sm text-red-800">
+            {error || "This booking could not be found."}
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={loadBooking}
+              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+            >
+              Try again
+            </button>
+            <Link
+              to="/bookings"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Back to my bookings
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const fullId = getBookingId(booking);
+  const reference = fullId ? fullId.slice(-8).toUpperCase() : "Unavailable";
+  const status = getBookingStatus(booking);
+  const serviceName =
+    booking.service?.name || booking.service?.title || "Service";
+  const providerName =
+    booking.service?.owner?.name ||
+    booking.service?.provider?.name ||
+    booking.provider?.name ||
+    "Not available";
+  const price = booking.service?.price ?? booking.price;
+  const duration = booking.service?.duration ?? booking.duration;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10">
-      <div className="mx-auto max-w-3xl">
+    <main className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
+      <div className="mb-6">
         <Link
           to="/bookings"
-          className="text-sm font-semibold text-slate-700 hover:text-slate-900"
+          className="text-sm font-medium text-blue-700 hover:text-blue-900"
         >
           ← Back to my bookings
         </Link>
+      </div>
 
-        <div className="mt-6">
-          <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
-            Booking details
-          </h1>
-          <p className="mt-3 text-slate-600">
-            Review your appointment information.
-          </p>
+      <header className="mb-6">
+        <p className="text-sm text-gray-500">Booking details</p>
+        <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
+          {serviceName}
+        </h1>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <span
+            className={`rounded-full px-3 py-1 text-sm font-medium ${getStatusStyles(
+              status,
+            )}`}
+          >
+            {getStatusLabel(status)}
+          </span>
+          <span className="text-sm text-gray-500">
+            Reference: <strong className="text-gray-800">#{reference}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={handleCopyReference}
+            className="text-sm font-medium text-blue-700 hover:text-blue-900"
+          >
+            Copy full ID
+          </button>
         </div>
 
-        {isLoading && (
-          <div
-            role="status"
-            className="mt-8 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <p className="text-slate-600">Loading booking details...</p>
-          </div>
+        {copyMessage && (
+          <p className="mt-2 break-all text-sm text-gray-600" role="status">
+            {copyMessage}
+          </p>
         )}
+      </header>
 
-        {!isLoading && error && (
-          <div
-            role="alert"
-            className="mt-8 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <h2 className="text-xl font-bold text-slate-900">
-              Unable to show booking
-            </h2>
-            <p className="mt-3 text-slate-600">{error}</p>
+      <div className="space-y-5">
+        <StatusTimeline status={status} />
 
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <button
-                type="button"
-                onClick={loadBooking}
-                className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-              >
-                Try again
-              </button>
+        <section className="rounded-xl border border-gray-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Appointment information
+          </h2>
 
-              <Link
-                to="/bookings"
-                className="rounded-lg border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                My bookings
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {!isLoading && !error && booking && (
-          <article className="mt-8 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-            <div className="border-b border-slate-200 p-6 sm:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                    Service
-                  </p>
-                  <h2 className="mt-2 text-2xl font-bold text-slate-900">
-                    {booking.service?.name || "Service"}
-                  </h2>
-                  <p className="mt-3 font-mono text-sm text-slate-600">
-                    Reference:{" "}
-                    {bookingReference ? `#${bookingReference}` : "Unavailable"}
-                  </p>
-                </div>
-
-                <span
-                  className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-semibold ring-1 ${getStatusClasses(
-                    booking.status,
-                  )}`}
-                >
-                  {formatStatus(booking.status)}
-                </span>
-              </div>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm text-gray-500">Date</dt>
+              <dd className="mt-1 font-medium text-gray-900">
+                {formatBookingDate(booking.date)}
+              </dd>
             </div>
 
-            <div className="grid gap-6 p-6 sm:grid-cols-2 sm:p-8">
-              <div>
-                <p className="text-sm text-slate-500">Appointment date</p>
-                <p className="mt-2 font-semibold leading-relaxed text-slate-900">
-                  {formatBookingDate(booking.date)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-500">Appointment time</p>
-                <p className="mt-2 font-semibold text-slate-900">
-                  {formatBookingTime(booking.startTime)} –{" "}
-                  {formatBookingTime(booking.endTime)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-500">Service price</p>
-                <p className="mt-2 font-semibold text-slate-900">
-                  ${booking.service?.price ?? "—"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-500">Duration</p>
-                <p className="mt-2 font-semibold text-slate-900">
-                  {booking.service?.duration != null
-                    ? `${booking.service.duration} minutes`
-                    : "Not specified"}
-                </p>
-              </div>
-
-              <div className="sm:col-span-2">
-                <p className="text-sm text-slate-500">Service provider</p>
-                <p className="mt-2 font-semibold text-slate-900">
-                  {booking.service?.owner?.name ||
-                    "Provider information unavailable"}
-                </p>
-              </div>
+            <div>
+              <dt className="text-sm text-gray-500">Time</dt>
+              <dd className="mt-1 font-medium text-gray-900">
+                {booking.startTime
+                  ? formatBookingTime(booking.startTime)
+                  : "Time unavailable"}
+                {booking.endTime
+                  ? ` – ${formatBookingTime(booking.endTime)}`
+                  : ""}
+              </dd>
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 p-6 sm:p-8">
-              <Link
-                to="/bookings"
-                className="inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-              >
-                Back to my bookings
-              </Link>
+            <div>
+              <dt className="text-sm text-gray-500">Service provider</dt>
+              <dd className="mt-1 font-medium text-gray-900">{providerName}</dd>
             </div>
-          </article>
-        )}
+
+            {duration != null && (
+              <div>
+                <dt className="text-sm text-gray-500">Duration</dt>
+                <dd className="mt-1 font-medium text-gray-900">
+                  {duration} minutes
+                </dd>
+              </div>
+            )}
+
+            {price != null && (
+              <div>
+                <dt className="text-sm text-gray-500">Price</dt>
+                <dd className="mt-1 font-medium text-gray-900">
+                  ${Number(price).toFixed(2)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </section>
+      </div>
+
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          to="/bookings"
+          className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-800"
+        >
+          View all bookings
+        </Link>
+        <Link
+          to="/services"
+          className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Browse services
+        </Link>
       </div>
     </main>
   );
 }
-
-export default BookingDetails;
