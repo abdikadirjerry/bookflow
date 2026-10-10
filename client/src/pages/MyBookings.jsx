@@ -24,6 +24,8 @@ function MyBookings() {
   const [sortBy, setSortBy] = useState("upcoming");
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
+  const [copiedBookingId, setCopiedBookingId] = useState(null);
+  const [copyError, setCopyError] = useState("");
 
   const loadBookings = useCallback(async () => {
     try {
@@ -69,10 +71,32 @@ function MyBookings() {
     const bookingId = booking._id || booking.id;
 
     if (!bookingId) {
-      return "Unavailable";
+      return null;
     }
 
     return bookingId.toString().slice(-8).toUpperCase();
+  };
+
+  const handleCopyReference = async (booking) => {
+    const bookingId = booking._id || booking.id;
+    const reference = getBookingReference(booking);
+
+    setCopyError("");
+    setCopiedBookingId(null);
+
+    if (!reference || !bookingId) {
+      setCopyError("This booking reference is unavailable.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(reference);
+      setCopiedBookingId(bookingId);
+    } catch {
+      setCopyError(
+        `Couldn't copy automatically. Please copy this reference manually: ${reference}`,
+      );
+    }
   };
 
   const canCancelBooking = (booking) => {
@@ -191,6 +215,8 @@ function MyBookings() {
 
   const handleRefresh = async () => {
     setCancelError("");
+    setCopyError("");
+    setCopiedBookingId(null);
     await loadBookings();
   };
 
@@ -323,6 +349,15 @@ function MyBookings() {
           </div>
         )}
 
+        {!isLoading && !error && copyError && (
+          <div
+            role="alert"
+            className="mb-5 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200"
+          >
+            <p className="text-sm text-amber-800">{copyError}</p>
+          </div>
+        )}
+
         {!isLoading && !error && bookings.length === 0 && (
           <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
             <h2 className="text-xl font-bold text-slate-900">
@@ -372,6 +407,7 @@ function MyBookings() {
               const isCancelling = cancellingBookingId === bookingId;
               const canCancel = canCancelBooking(booking);
               const bookingReference = getBookingReference(booking);
+              const wasCopied = copiedBookingId === bookingId;
 
               return (
                 <article
@@ -393,11 +429,34 @@ function MyBookings() {
                           Booking reference
                         </p>
 
-                        <p className="mt-1 font-mono text-sm font-bold text-slate-800">
-                          {bookingReference === "Unavailable"
-                            ? bookingReference
-                            : `#${bookingReference}`}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="font-mono text-sm font-bold text-slate-800">
+                            {bookingReference
+                              ? `#${bookingReference}`
+                              : "Unavailable"}
+                          </p>
+
+                          {bookingReference && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyReference(booking)}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                              aria-label={`Copy reference ${bookingReference}`}
+                            >
+                              {wasCopied ? (
+                                <>
+                                  <span aria-hidden="true">✓</span>
+                                  Copied!
+                                </>
+                              ) : (
+                                <>
+                                  <span aria-hidden="true">⧉</span>
+                                  Copy
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
