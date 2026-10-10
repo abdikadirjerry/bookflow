@@ -23,6 +23,8 @@ function MyBookings() {
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [sortBy, setSortBy] = useState("upcoming");
   const [searchQuery, setSearchQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
   const [copiedBookingId, setCopiedBookingId] = useState(null);
@@ -142,6 +144,17 @@ function MyBookings() {
     return Number.isNaN(timestamp) ? 0 : timestamp;
   };
 
+  const dateRangeError =
+    fromDate && toDate && toDate < fromDate
+      ? "The end date cannot be earlier than the start date."
+      : "";
+
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    selectedStatus !== "all" ||
+    fromDate !== "" ||
+    toDate !== "";
+
   const bookingCounts = useMemo(() => {
     const counts = {
       all: bookings.length,
@@ -175,7 +188,12 @@ function MyBookings() {
         serviceName.includes(normalizedQuery) ||
         reference.includes(normalizedQuery);
 
-      return matchesStatus && matchesSearch;
+      const matchesDateRange =
+        !dateRangeError &&
+        (!fromDate || (booking.date && booking.date >= fromDate)) &&
+        (!toDate || (booking.date && booking.date <= toDate));
+
+      return matchesStatus && matchesSearch && matchesDateRange;
     });
 
     const sorted = [...filtered];
@@ -193,7 +211,15 @@ function MyBookings() {
     });
 
     return sorted;
-  }, [bookings, selectedStatus, sortBy, searchQuery]);
+  }, [
+    bookings,
+    selectedStatus,
+    sortBy,
+    searchQuery,
+    fromDate,
+    toDate,
+    dateRangeError,
+  ]);
 
   const handleCancelBooking = async (bookingId) => {
     const confirmed = window.confirm(
@@ -241,6 +267,13 @@ function MyBookings() {
     setSearchQuery("");
   };
 
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedStatus("all");
+    setFromDate("");
+    setToDate("");
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-5xl">
@@ -275,7 +308,7 @@ function MyBookings() {
         </div>
 
         {!isLoading && !error && (
-          <div className="mb-6 space-y-5">
+          <div className="mb-6 space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
             <div>
               <label
                 htmlFor="booking-search"
@@ -304,13 +337,6 @@ function MyBookings() {
                   </button>
                 )}
               </div>
-
-              {searchQuery.trim() && (
-                <p className="mt-2 text-sm text-slate-500" aria-live="polite">
-                  {filteredBookings.length} matching{" "}
-                  {filteredBookings.length === 1 ? "booking" : "bookings"}
-                </p>
-              )}
             </div>
 
             <div>
@@ -344,6 +370,61 @@ function MyBookings() {
               </div>
             </div>
 
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-slate-700">
+                Filter by appointment date
+              </h2>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="booking-from-date"
+                    className="mb-2 block text-sm font-medium text-slate-600"
+                  >
+                    From date
+                  </label>
+
+                  <input
+                    id="booking-from-date"
+                    type="date"
+                    value={fromDate}
+                    max={toDate || undefined}
+                    onChange={(event) => setFromDate(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="booking-to-date"
+                    className="mb-2 block text-sm font-medium text-slate-600"
+                  >
+                    To date
+                  </label>
+
+                  <input
+                    id="booking-to-date"
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(event) => setToDate(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
+              </div>
+
+              {dateRangeError && (
+                <p className="mt-2 text-sm text-red-600" role="alert">
+                  {dateRangeError}
+                </p>
+              )}
+
+              <p className="mt-2 text-xs text-slate-500">
+                Choose either date or both. The selected dates are included in
+                the results.
+              </p>
+            </div>
+
             <div className="max-w-xs">
               <label
                 htmlFor="booking-sort"
@@ -364,6 +445,22 @@ function MyBookings() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500" aria-live="polite">
+                Showing {filteredBookings.length} of {bookings.length} bookings
+              </p>
+
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="w-fit rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -441,36 +538,26 @@ function MyBookings() {
           filteredBookings.length === 0 && (
             <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
               <h2 className="text-xl font-bold text-slate-900">
-                No matching bookings
+                {dateRangeError
+                  ? "Check your date range"
+                  : "No matching bookings"}
               </h2>
 
               <p className="mt-2 text-slate-600">
-                {searchQuery.trim()
-                  ? "Try another service name or booking reference, or clear your search."
-                  : `You don't have any ${selectedStatus} bookings.`}
+                {dateRangeError
+                  ? dateRangeError
+                  : "No bookings match your current filters. Try changing your search, status, or date range."}
               </p>
 
-              <div className="mt-6 flex flex-wrap justify-center gap-3">
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    className="rounded-lg border border-slate-200 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
-                  >
-                    Clear search
-                  </button>
-                )}
-
-                {selectedStatus !== "all" && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus("all")}
-                    className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
-                  >
-                    Show all statuses
-                  </button>
-                )}
-              </div>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-6 rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
           )}
 
