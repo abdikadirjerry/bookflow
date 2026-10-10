@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getServiceById } from "../services/serviceService";
 import { createBooking, getAvailableSlots } from "../services/bookingService";
@@ -21,6 +21,8 @@ function Booking() {
   const [bookingError, setBookingError] = useState("");
 
   useEffect(() => {
+    let isActive = true;
+
     const fetchService = async () => {
       try {
         setIsLoadingService(true);
@@ -28,38 +30,58 @@ function Booking() {
 
         const data = await getServiceById(serviceId);
 
-        setService(data.service);
+        if (isActive) {
+          setService(data.service);
+        }
       } catch (error) {
-        setServiceError(
-          error.response?.data?.message ||
-            "Unable to load this service. Please try again.",
-        );
+        if (isActive) {
+          setServiceError(
+            error.response?.data?.message ||
+              "Unable to load this service. Please try again.",
+          );
+        }
       } finally {
-        setIsLoadingService(false);
+        if (isActive) {
+          setIsLoadingService(false);
+        }
       }
     };
 
     fetchService();
+
+    return () => {
+      isActive = false;
+    };
   }, [serviceId]);
 
-  useEffect(() => {
-    const fetchAvailableSlots = async () => {
+  const loadAvailableSlots = useCallback(
+    async ({ preserveBookingError = false } = {}) => {
       if (!date) {
         setAvailableSlots([]);
         setSelectedTime("");
         setSlotsError("");
-        return;
+
+        if (!preserveBookingError) {
+          setBookingError("");
+        }
+
+        return false;
       }
 
       try {
         setIsLoadingSlots(true);
         setSlotsError("");
-        setBookingError("");
-        setSelectedTime("");
+
+        if (!preserveBookingError) {
+          setBookingError("");
+        }
 
         const data = await getAvailableSlots(serviceId, date);
+        const slots = data.slots || [];
 
-        setAvailableSlots(data.slots || []);
+        setAvailableSlots(slots);
+
+        return true;
       } catch (error) {
         setAvailableSlots([]);
 
@@ -67,16 +89,67 @@ function Booking() {
           error.response?.data?.message ||
             "Unable to load available times. Please try again.",
         );
+
+        return false;
       } finally {
         setIsLoadingSlots(false);
+      }
+    },
+    [date, serviceId],
+  );
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchAvailableSlots = async () => {
+      if (!date) {
+        setAvailableSlots([]);
+        setSelectedTime("");
+        setSlotsError("");
+        setBookingError("");
+        return;
+      }
+
+      setSelectedTime("");
+
+      try {
+        setIsLoadingSlots(true);
+        setSlotsError("");
+        setBookingError("");
+
+        const data = await getAvailableSlots(serviceId, date);
+
+        if (isActive) {
+          setAvailableSlots(data.slots || []);
+        }
+      } catch (error) {
+        if (isActive) {
+          setAvailableSlots([]);
+
+          setSlotsError(
+            error.response?.data?.message ||
+              "Unable to load available times. Please try again.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingSlots(false);
+        }
       }
     };
 
     fetchAvailableSlots();
+
+    return () => {
+      isActive = false;
+    };
   }, [serviceId, date]);
 
   const handleDateChange = (event) => {
     setDate(event.target.value);
+    setSelectedTime("");
+    setBookingError("");
+    setSlotsError("");
   };
 
   const handleTimeSelect = (time) => {
@@ -107,10 +180,19 @@ function Booking() {
 
       navigate("/bookings");
     } catch (error) {
-      setBookingError(
-        error.response?.data?.message ||
-          "Unable to create your booking. Please try again.",
-      );
+      if (error.response?.status === 409) {
+        setSelectedTime("");
+        setBookingError(
+          "Sorry, this time slot was just booked by someone else. We've refreshed the available times. Please choose another time.",
+        );
+
+        await loadAvailableSlots({ preserveBookingError: true });
+      } else {
+        setBookingError(
+          error.response?.data?.message ||
+            "Unable to create your booking. Please try again.",
+        );
+      }
     } finally {
       setIsBooking(false);
     }
@@ -243,9 +325,14 @@ function Booking() {
                     Available times
                   </h3>
 
-                  {availableSlots.length > 0 && (
+                  {!isLoadingSlots && !slotsError && (
                     <span className="text-sm text-slate-500">
-                      {availableSlots.length} available
+                      {
+                        availableSlots.filter(
+                          (slot) => slot.available !== false,
+                        ).length
+                      }{" "}
+                      available
                     </span>
                   )}
                 </div>
@@ -262,12 +349,21 @@ function Booking() {
                     className="mt-4 rounded-xl bg-red-50 p-4 ring-1 ring-red-100"
                   >
                     <p className="text-sm text-red-700">{slotsError}</p>
+
+                    <button
+                      type="button"
+                      onClick={() => loadAvailableSlots()}
+                      className="mt-3 text-sm font-semibold text-red-800 underline hover:text-red-950"
+                    >
+                      Try loading times again
+                    </button>
                   </div>
                 )}
 
                 {!isLoadingSlots &&
                   !slotsError &&
-                  availableSlots.length === 0 && (
+                  availableSlots.filter((slot) => slot.available !== false)
+                    .length === 0 && (
                     <div className="mt-4 rounded-xl bg-slate-50 p-6 text-center">
                       <h3 className="font-semibold text-slate-900">
                         No available times
@@ -282,27 +378,30 @@ function Booking() {
 
                 {!isLoadingSlots &&
                   !slotsError &&
-                  availableSlots.length > 0 && (
+                  availableSlots.some((slot) => slot.available !== false) && (
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {availableSlots.map((slot) => {
-                        const isSelected = selectedTime === slot.startTime;
+                      {availableSlots
+                        .filter((slot) => slot.available !== false)
+                        .map((slot) => {
+                          const isSelected = selectedTime === slot.startTime;
 
-                        return (
-                          <button
-                            key={slot.startTime}
-                            type="button"
-                            onClick={() => handleTimeSelect(slot.startTime)}
-                            disabled={isBooking}
-                            className={`rounded-lg border px-4 py-3 text-sm font-semibold transition ${
-                              isSelected
-                                ? "border-slate-900 bg-slate-900 text-white"
-                                : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:text-slate-900"
-                            } disabled:cursor-not-allowed disabled:opacity-60`}
-                          >
-                            {slot.startTime}
-                          </button>
-                        );
-                      })}
+                          return (
+                            <button
+                              key={slot.startTime}
+                              type="button"
+                              onClick={() => handleTimeSelect(slot.startTime)}
+                              disabled={isBooking}
+                              aria-pressed={isSelected}
+                              className={`rounded-lg border px-4 py-3 text-sm font-semibold transition ${
+                                isSelected
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:text-slate-900"
+                              } disabled:cursor-not-allowed disabled:opacity-60`}
+                            >
+                              {slot.startTime}
+                            </button>
+                          );
+                        })}
                     </div>
                   )}
               </div>
@@ -311,9 +410,9 @@ function Booking() {
             {bookingError && (
               <div
                 role="alert"
-                className="mt-6 rounded-lg bg-red-50 p-4 ring-1 ring-red-100"
+                className="mt-6 rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200"
               >
-                <p className="text-sm text-red-700">{bookingError}</p>
+                <p className="text-sm text-amber-900">{bookingError}</p>
               </div>
             )}
 
@@ -321,7 +420,13 @@ function Booking() {
               <button
                 type="button"
                 onClick={handleBooking}
-                disabled={isBooking || !date || !selectedTime}
+                disabled={
+                  isBooking ||
+                  isLoadingSlots ||
+                  !date ||
+                  !selectedTime ||
+                  !!slotsError
+                }
                 className="w-full rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBooking ? "Confirming booking..." : "Confirm booking"}
