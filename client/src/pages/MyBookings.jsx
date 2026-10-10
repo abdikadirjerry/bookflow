@@ -1,11 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { cancelBooking, getMyBookings } from "../services/bookingService";
+
+const BOOKING_STATUSES = [
+  "all",
+  "pending",
+  "confirmed",
+  "completed",
+  "cancelled",
+];
 
 function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("all");
 
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
@@ -65,6 +74,32 @@ function MyBookings() {
     return booking.status === "pending" || booking.status === "confirmed";
   };
 
+  const bookingCounts = useMemo(() => {
+    const counts = {
+      all: bookings.length,
+      pending: 0,
+      confirmed: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+
+    bookings.forEach((booking) => {
+      if (Object.prototype.hasOwnProperty.call(counts, booking.status)) {
+        counts[booking.status] += 1;
+      }
+    });
+
+    return counts;
+  }, [bookings]);
+
+  const filteredBookings = useMemo(() => {
+    if (selectedStatus === "all") {
+      return bookings;
+    }
+
+    return bookings.filter((booking) => booking.status === selectedStatus);
+  }, [bookings, selectedStatus]);
+
   const handleCancelBooking = async (bookingId) => {
     const confirmed = window.confirm(
       "Are you sure you want to cancel this booking?",
@@ -82,7 +117,7 @@ function MyBookings() {
 
       setBookings((currentBookings) =>
         currentBookings.map((booking) =>
-          booking._id === bookingId
+          (booking._id || booking.id) === bookingId
             ? {
                 ...booking,
                 status: data.booking?.status || "cancelled",
@@ -119,6 +154,39 @@ function MyBookings() {
             View and manage your appointments.
           </p>
         </div>
+
+        {!isLoading && !error && (
+          <div className="mb-6">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+              Filter by status
+            </h2>
+
+            <div className="flex flex-wrap gap-2">
+              {BOOKING_STATUSES.map((status) => {
+                const isSelected = selectedStatus === status;
+
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setSelectedStatus(status)}
+                    aria-pressed={isSelected}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                      isSelected
+                        ? "bg-slate-900 text-white"
+                        : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {status === "all" ? "All" : formatStatus(status)}
+                    {" ("}
+                    {bookingCounts[status]}
+                    {")"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {isLoading && (
           <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
@@ -167,16 +235,40 @@ function MyBookings() {
           </div>
         )}
 
-        {!isLoading && !error && bookings.length > 0 && (
+        {!isLoading &&
+          !error &&
+          bookings.length > 0 &&
+          filteredBookings.length === 0 && (
+            <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
+              <h2 className="text-xl font-bold text-slate-900">
+                No {selectedStatus} bookings
+              </h2>
+
+              <p className="mt-2 text-slate-600">
+                You don't have any bookings with this status.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStatus("all")}
+                className="mt-6 rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
+              >
+                Show all bookings
+              </button>
+            </div>
+          )}
+
+        {!isLoading && !error && filteredBookings.length > 0 && (
           <div className="space-y-5">
-            {bookings.map((booking) => {
-              const isCancelling = cancellingBookingId === booking._id;
+            {filteredBookings.map((booking) => {
+              const bookingId = booking._id || booking.id;
+              const isCancelling = cancellingBookingId === bookingId;
               const canCancel = canCancelBooking(booking);
               const bookingReference = getBookingReference(booking);
 
               return (
                 <article
-                  key={booking._id || booking.id}
+                  key={bookingId}
                   className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8"
                 >
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -251,7 +343,7 @@ function MyBookings() {
                     <div className="mt-6 border-t border-slate-200 pt-6">
                       <button
                         type="button"
-                        onClick={() => handleCancelBooking(booking._id)}
+                        onClick={() => handleCancelBooking(bookingId)}
                         disabled={isCancelling}
                         className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
