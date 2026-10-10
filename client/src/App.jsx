@@ -6,6 +6,7 @@ import ServiceDetails from "./pages/ServiceDetails";
 import Booking from "./pages/Booking";
 import BookingSuccess from "./pages/BookingSuccess";
 import MyBookings from "./pages/MyBookings";
+import BookingDetails from "./pages/BookingDetails";
 import Dashboard from "./pages/Dashboard";
 import OwnerServices from "./pages/OwnerServices";
 import CreateService from "./pages/CreateService";
@@ -29,6 +30,7 @@ function App() {
           <Route path="/services/:serviceId/book" element={<Booking />} />
           <Route path="/booking-success" element={<BookingSuccess />} />
           <Route path="/bookings" element={<MyBookings />} />
+          <Route path="/bookings/:bookingId" element={<BookingDetails />} />
         </Route>
 
         <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>

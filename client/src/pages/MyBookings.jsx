@@ -22,7 +22,6 @@ function MyBookings() {
   const [error, setError] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [sortBy, setSortBy] = useState("upcoming");
-
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
 
@@ -447,8 +446,15 @@ function MyBookings() {
                     </div>
                   )}
 
-                  {canCancel && (
-                    <div className="mt-6 border-t border-slate-200 pt-6">
+                  <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-6">
+                    <Link
+                      to={`/bookings/${bookingId}`}
+                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                    >
+                      View details
+                    </Link>
+
+                    {canCancel && (
                       <button
                         type="button"
                         onClick={() => handleCancelBooking(bookingId)}
@@ -457,8 +463,8 @@ function MyBookings() {
                       >
                         {isCancelling ? "Cancelling..." : "Cancel booking"}
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </article>
               );
             })}
