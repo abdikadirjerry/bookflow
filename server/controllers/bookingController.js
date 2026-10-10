@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const Booking = require("../models/Booking");
+const BookingDayLock = require("../models/BookingDayLock");
 const Service = require("../models/Service");
 const Availability = require("../models/Availability");
 
@@ -21,7 +23,82 @@ const minutesToTime = (minutes) => {
   )}`;
 };
 
+const acquireBookingDayLock = async (ownerId, date) => {
+  // Create the lock document once. The unique owner/date index handles
+  // simultaneous attempts to initialize the same lock.
+  try {
+    await BookingDayLock.updateOne(
+      { owner: ownerId, date },
+      {
+        $setOnInsert: {
+          owner: ownerId,
+          date,
+          lockedUntil: new Date(0),
+          lockedBy: null,
+        },
+      },
+      { upsert: true },
+    );
+  } catch (error) {
+    if (error.code !== 11000) {
+      throw error;
+    }
+  }
+
+  const lockToken = crypto.randomUUID();
+  const waitUntil = Date.now() + 15000;
+  const lockDurationMs = 5 * 60 * 1000;
+
+  while (Date.now() < waitUntil) {
+    const now = new Date();
+    const lock = await BookingDayLock.findOneAndUpdate(
+      {
+        owner: ownerId,
+        date,
+        lockedUntil: { $lte: now },
+      },
+      {
+        $set: {
+          lockedUntil: new Date(now.getTime() + lockDurationMs),
+          lockedBy: lockToken,
+        },
+      },
+      { new: true },
+    );
+
+    if (lock) {
+      return lockToken;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  const error = new Error("Booking is busy. Please try again.");
+  error.code = "BOOKING_LOCK_TIMEOUT";
+  throw error;
+};
+
+const releaseBookingDayLock = async (ownerId, date, lockToken) => {
+  await BookingDayLock.updateOne(
+    {
+      owner: ownerId,
+      date,
+      lockedBy: lockToken,
+    },
+    {
+      $set: {
+        lockedUntil: new Date(0),
+        lockedBy: null,
+      },
+    },
+  );
+};
+
 const createBooking = async (req, res) => {
+  let bookingLockOwnerId = null;
+  let bookingLockDate = null;
+  let bookingLockToken = null;
+
   try {
     const { serviceId, date, startTime } = req.body;
 
@@ -171,8 +248,26 @@ const createBooking = async (req, res) => {
 
     const endTime = minutesToTime(endMinutes);
 
+    // Serialize booking creation for this provider and date. This prevents
+    // two concurrent requests from both passing the overlap check.
+    bookingLockOwnerId = service.owner;
+    bookingLockDate = date;
+    bookingLockToken = await acquireBookingDayLock(
+      bookingLockOwnerId,
+      bookingLockDate,
+    );
+
+    // A provider can offer multiple services, but cannot serve two customers
+    // at overlapping times. Check bookings across all of this provider's services.
+    const providerServices = await Service.find({
+      owner: service.owner,
+    }).select("_id");
+    const providerServiceIds = providerServices.map(
+      (providerService) => providerService._id,
+    );
+
     const overlappingBooking = await Booking.findOne({
-      service: serviceId,
+      service: { $in: providerServiceIds },
       date,
       status: {
         $in: ["pending", "confirmed"],
@@ -211,6 +306,12 @@ const createBooking = async (req, res) => {
   } catch (error) {
     console.error("Create booking error:", error);
 
+    if (error.code === "BOOKING_LOCK_TIMEOUT") {
+      return res.status(503).json({
+        message: "Booking is busy. Please try again.",
+      });
+    }
+
     if (error.name === "ValidationError") {
       return res.status(400).json({
         message: error.message,
@@ -220,6 +321,18 @@ const createBooking = async (req, res) => {
     res.status(500).json({
       message: "Server error while creating booking",
     });
+  } finally {
+    if (bookingLockOwnerId && bookingLockDate && bookingLockToken) {
+      try {
+        await releaseBookingDayLock(
+          bookingLockOwnerId,
+          bookingLockDate,
+          bookingLockToken,
+        );
+      } catch (releaseError) {
+        console.error("Release booking lock error:", releaseError);
+      }
+    }
   }
 };
 
@@ -329,8 +442,15 @@ const getAvailableSlots = async (req, res) => {
 
     const businessEndMinutes = timeToMinutes(dayAvailability.endTime);
 
+    const providerServices = await Service.find({
+      owner: service.owner,
+    }).select("_id");
+    const providerServiceIds = providerServices.map(
+      (providerService) => providerService._id,
+    );
+
     const bookings = await Booking.find({
-      service: serviceId,
+      service: { $in: providerServiceIds },
       date,
       status: {
         $in: ["pending", "confirmed"],
