@@ -11,12 +11,14 @@ const SERVICE_CATEGORIES = [
 ];
 
 const SERVICES_PER_PAGE = 6;
+const SEARCH_DEBOUNCE_MS = 400;
 
 function Services() {
   const [services, setServices] = useState([]);
   const [owners, setOwners] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -31,7 +33,19 @@ function Services() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Load all available provider options from the dedicated endpoint.
+  // Wait until the user pauses typing before applying the search.
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+      setCurrentPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [searchTerm]);
+
+  // Load provider options independently of the active filters.
   useEffect(() => {
     let cancelled = false;
 
@@ -56,7 +70,7 @@ function Services() {
     };
   }, []);
 
-  // Fetch the current page with filters and sorting handled by the backend.
+  // Fetch services using server-side filtering, sorting, and pagination.
   useEffect(() => {
     let cancelled = false;
 
@@ -71,8 +85,8 @@ function Services() {
           sort: sortOrder,
         };
 
-        if (searchTerm.trim()) {
-          params.search = searchTerm.trim();
+        if (debouncedSearchTerm) {
+          params.search = debouncedSearchTerm;
         }
 
         if (selectedCategory) {
@@ -123,7 +137,7 @@ function Services() {
     };
   }, [
     currentPage,
-    searchTerm,
+    debouncedSearchTerm,
     selectedCategory,
     minPrice,
     maxPrice,
@@ -139,6 +153,7 @@ function Services() {
 
   const clearFilters = () => {
     setSearchTerm("");
+    setDebouncedSearchTerm("");
     setSelectedCategory("");
     setMinPrice("");
     setMaxPrice("");
