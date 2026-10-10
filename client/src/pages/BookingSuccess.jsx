@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
 function formatDate(dateValue) {
@@ -22,9 +23,8 @@ function formatDate(dateValue) {
 function BookingSuccess() {
   const location = useLocation();
   const { booking, fallback } = location.state || {};
+  const [copyMessage, setCopyMessage] = useState("");
 
-  // A successful booking should provide confirmation details.
-  // If someone opens this URL directly, send them to their bookings.
   if (!booking) {
     return <Navigate to="/bookings" replace />;
   }
@@ -41,6 +41,31 @@ function BookingSuccess() {
   const duration = service?.duration ?? fallback?.service?.duration;
   const provider = service?.owner?.name || fallback?.service?.owner?.name;
   const status = booking.status || "pending";
+
+  const bookingId =
+    typeof booking._id === "string"
+      ? booking._id
+      : typeof booking.id === "string"
+        ? booking.id
+        : "";
+
+  const bookingReference = bookingId ? bookingId.slice(-8).toUpperCase() : "";
+
+  const handleCopyReference = async () => {
+    if (!bookingId) {
+      setCopyMessage("Reference unavailable.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(bookingId);
+      setCopyMessage("Full booking ID copied!");
+    } catch {
+      setCopyMessage(
+        `Copy isn't available here. Your full booking ID is: ${bookingId}`,
+      );
+    }
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
@@ -62,9 +87,42 @@ function BookingSuccess() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-lg leading-6 text-slate-600">
-            Your booking was created successfully. Keep these details for your
-            appointment, and check your bookings for any status updates.
+            Your booking was created successfully. Keep your reference for
+            future enquiries, and check your bookings for status updates.
           </p>
+
+          {bookingReference && (
+            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5 text-left">
+              <p className="text-sm font-medium text-slate-600">
+                Booking reference
+              </p>
+
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p className="font-mono text-xl font-bold tracking-wider text-slate-900">
+                  #{bookingReference}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleCopyReference}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                >
+                  Copy full ID
+                </button>
+              </div>
+
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Use this reference to identify your booking. The copy button
+                copies the full booking ID.
+              </p>
+
+              {copyMessage && (
+                <p role="status" className="mt-2 text-sm text-slate-700">
+                  {copyMessage}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5 text-left sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
