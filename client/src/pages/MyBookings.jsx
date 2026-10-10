@@ -22,6 +22,7 @@ function MyBookings() {
   const [error, setError] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [sortBy, setSortBy] = useState("upcoming");
+  const [searchQuery, setSearchQuery] = useState("");
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
   const [copiedBookingId, setCopiedBookingId] = useState(null);
@@ -90,6 +91,10 @@ function MyBookings() {
     }
 
     try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+
       await navigator.clipboard.writeText(reference);
       setCopiedBookingId(bookingId);
     } catch {
@@ -156,10 +161,22 @@ function MyBookings() {
   }, [bookings]);
 
   const filteredBookings = useMemo(() => {
-    const filtered =
-      selectedStatus === "all"
-        ? bookings
-        : bookings.filter((booking) => booking.status === selectedStatus);
+    const normalizedQuery = searchQuery.trim().replace(/^#/, "").toLowerCase();
+
+    const filtered = bookings.filter((booking) => {
+      const matchesStatus =
+        selectedStatus === "all" || booking.status === selectedStatus;
+
+      const serviceName = (booking.service?.name || "").toLowerCase();
+      const reference = (getBookingReference(booking) || "").toLowerCase();
+
+      const matchesSearch =
+        !normalizedQuery ||
+        serviceName.includes(normalizedQuery) ||
+        reference.includes(normalizedQuery);
+
+      return matchesStatus && matchesSearch;
+    });
 
     const sorted = [...filtered];
 
@@ -176,7 +193,7 @@ function MyBookings() {
     });
 
     return sorted;
-  }, [bookings, selectedStatus, sortBy]);
+  }, [bookings, selectedStatus, sortBy, searchQuery]);
 
   const handleCancelBooking = async (bookingId) => {
     const confirmed = window.confirm(
@@ -220,6 +237,10 @@ function MyBookings() {
     await loadBookings();
   };
 
+  const clearSearch = () => {
+    setSearchQuery("");
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-5xl">
@@ -255,6 +276,43 @@ function MyBookings() {
 
         {!isLoading && !error && (
           <div className="mb-6 space-y-5">
+            <div>
+              <label
+                htmlFor="booking-search"
+                className="mb-2 block text-sm font-semibold text-slate-700"
+              >
+                Search bookings
+              </label>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  id="booking-search"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by service name or reference..."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </div>
+
+              {searchQuery.trim() && (
+                <p className="mt-2 text-sm text-slate-500" aria-live="polite">
+                  {filteredBookings.length} matching{" "}
+                  {filteredBookings.length === 1 ? "booking" : "bookings"}
+                </p>
+              )}
+            </div>
+
             <div>
               <h2 className="mb-3 text-sm font-semibold text-slate-700">
                 Filter by status
@@ -383,20 +441,36 @@ function MyBookings() {
           filteredBookings.length === 0 && (
             <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
               <h2 className="text-xl font-bold text-slate-900">
-                No {selectedStatus} bookings
+                No matching bookings
               </h2>
 
               <p className="mt-2 text-slate-600">
-                You don't have any bookings with this status.
+                {searchQuery.trim()
+                  ? "Try another service name or booking reference, or clear your search."
+                  : `You don't have any ${selectedStatus} bookings.`}
               </p>
 
-              <button
-                type="button"
-                onClick={() => setSelectedStatus("all")}
-                className="mt-6 rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
-              >
-                Show all bookings
-              </button>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="rounded-lg border border-slate-200 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Clear search
+                  </button>
+                )}
+
+                {selectedStatus !== "all" && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus("all")}
+                    className="rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
+                  >
+                    Show all statuses
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
