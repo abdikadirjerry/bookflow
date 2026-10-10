@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getServices } from "../services/serviceService";
+import { getServices, getServiceProviders } from "../services/serviceService";
 
 const SERVICE_CATEGORIES = [
   "Beauty & Personal Care",
@@ -26,33 +26,22 @@ function Services() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalServices, setTotalServices] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Load the provider options independently of the active filters.
+  // Load all available provider options from the dedicated endpoint.
   useEffect(() => {
     let cancelled = false;
 
     const fetchOwners = async () => {
       try {
-        const data = await getServices({ page: 1, limit: 100 });
+        const data = await getServiceProviders();
 
         if (cancelled) return;
 
-        const ownerMap = new Map();
-
-        data.services.forEach((service) => {
-          if (service.owner?._id && service.owner?.name) {
-            ownerMap.set(service.owner._id, service.owner.name);
-          }
-        });
-
-        setOwners(
-          Array.from(ownerMap, ([id, name]) => ({ id, name })).sort((a, b) =>
-            a.name.localeCompare(b.name),
-          ),
-        );
+        setOwners(data.providers || []);
       } catch (fetchError) {
         if (!cancelled) {
           console.error("Unable to load provider options:", fetchError);
@@ -67,7 +56,7 @@ function Services() {
     };
   }, []);
 
-  // Fetch only the requested page and let the backend apply filters and sorting.
+  // Fetch the current page with filters and sorting handled by the backend.
   useEffect(() => {
     let cancelled = false;
 
@@ -115,6 +104,7 @@ function Services() {
         setServices([]);
         setTotalServices(0);
         setTotalPages(0);
+
         setError(
           fetchError.response?.data?.message ||
             "Unable to load services. Please try again.",
@@ -139,6 +129,7 @@ function Services() {
     maxPrice,
     selectedOwnerId,
     sortOrder,
+    refreshKey,
   ]);
 
   const updateFilter = (setter, value) => {
@@ -176,9 +167,11 @@ function Services() {
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             BookFlow
           </p>
+
           <h1 className="mt-2 text-3xl font-bold text-slate-900 sm:text-4xl">
             Discover services
           </h1>
+
           <p className="mt-3 max-w-2xl text-slate-600">
             Browse available services and choose one that works for you.
           </p>
@@ -192,6 +185,7 @@ function Services() {
             >
               Search by name
             </label>
+
             <input
               id="service-search"
               type="search"
@@ -211,6 +205,7 @@ function Services() {
             >
               Filter by category
             </label>
+
             <select
               id="category-filter"
               value={selectedCategory}
@@ -220,6 +215,7 @@ function Services() {
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             >
               <option value="">All categories</option>
+
               {SERVICE_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
                   {category}
@@ -235,6 +231,7 @@ function Services() {
             >
               Filter by provider
             </label>
+
             <select
               id="provider-filter"
               value={selectedOwnerId}
@@ -244,6 +241,7 @@ function Services() {
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             >
               <option value="">All providers</option>
+
               {owners.map((owner) => (
                 <option key={owner.id} value={owner.id}>
                   {owner.name}
@@ -259,6 +257,7 @@ function Services() {
             >
               Minimum price ($)
             </label>
+
             <input
               id="min-price"
               type="number"
@@ -280,6 +279,7 @@ function Services() {
             >
               Maximum price ($)
             </label>
+
             <input
               id="max-price"
               type="number"
@@ -301,6 +301,7 @@ function Services() {
             >
               Sort services by price
             </label>
+
             <select
               id="sort-order"
               value={sortOrder}
@@ -339,9 +340,10 @@ function Services() {
             className="rounded-2xl bg-red-50 p-6 text-center ring-1 ring-red-100"
           >
             <p className="font-medium text-red-700">{error}</p>
+
             <button
               type="button"
-              onClick={() => setCurrentPage((page) => page)}
+              onClick={() => setRefreshKey((key) => key + 1)}
               className="mt-4 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
             >
               Try again
@@ -356,11 +358,13 @@ function Services() {
                 ? "No matching services"
                 : "No services available"}
             </h2>
+
             <p className="mt-2 text-slate-600">
               {hasActiveFilters
                 ? "Try changing your search, category, provider, or price range."
                 : "There are currently no active services to book."}
             </p>
+
             {hasActiveFilters && (
               <button
                 type="button"
@@ -391,6 +395,7 @@ function Services() {
                       <h2 className="text-xl font-bold text-slate-900">
                         {service.name}
                       </h2>
+
                       <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
                         ${service.price}
                       </span>
@@ -408,6 +413,7 @@ function Services() {
 
                     <div className="mt-5 flex items-center justify-between text-sm text-slate-500">
                       <span>{service.duration} minutes</span>
+
                       {service.owner && (
                         <span>
                           By{" "}
