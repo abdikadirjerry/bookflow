@@ -77,9 +77,7 @@ function Booking() {
         }
 
         const data = await getAvailableSlots(serviceId, date);
-        const slots = data.slots || [];
-
-        setAvailableSlots(slots);
+        setAvailableSlots(data.slots || []);
 
         return true;
       } catch (error) {
@@ -197,6 +195,24 @@ function Booking() {
       setIsBooking(false);
     }
   };
+
+  const selectedSlot = availableSlots.find(
+    (slot) => slot.startTime === selectedTime && slot.available !== false,
+  );
+
+  const formattedDate = date
+    ? (() => {
+        const [year, month, day] = date.split("-").map(Number);
+        const localDate = new Date(year, month - 1, day);
+
+        return localDate.toLocaleDateString(undefined, {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      })()
+    : "";
 
   if (isLoadingService) {
     return (
@@ -407,6 +423,65 @@ function Booking() {
               </div>
             )}
 
+            {selectedSlot && (
+              <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  Review your appointment
+                </p>
+
+                <h3 className="mt-2 text-xl font-bold text-slate-900">
+                  {service.name}
+                </h3>
+
+                <div className="mt-5 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-slate-600">Date</span>
+                    <span className="text-right text-sm font-semibold text-slate-900">
+                      {formattedDate}
+                    </span>
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-slate-600">Time</span>
+                    <span className="text-right text-sm font-semibold text-slate-900">
+                      {selectedSlot.startTime} – {selectedSlot.endTime}
+                    </span>
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-sm text-slate-600">Duration</span>
+                    <span className="text-right text-sm font-semibold text-slate-900">
+                      {service.duration} minutes
+                    </span>
+                  </div>
+
+                  {service.owner && (
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-sm text-slate-600">Provider</span>
+                      <span className="text-right text-sm font-semibold text-slate-900">
+                        {service.owner.name}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="border-t border-slate-200 pt-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="font-semibold text-slate-900">
+                        Total price
+                      </span>
+                      <span className="text-2xl font-bold text-slate-900">
+                        ${service.price}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-xs leading-5 text-slate-500">
+                  Please review the details before confirming your booking.
+                </p>
+              </div>
+            )}
+
             {bookingError && (
               <div
                 role="alert"
@@ -424,7 +499,7 @@ function Booking() {
                   isBooking ||
                   isLoadingSlots ||
                   !date ||
-                  !selectedTime ||
+                  !selectedSlot ||
                   !!slotsError
                 }
                 className="w-full rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
