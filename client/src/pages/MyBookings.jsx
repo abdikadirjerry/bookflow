@@ -51,6 +51,16 @@ function MyBookings() {
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
+  const getBookingReference = (booking) => {
+    const bookingId = booking._id || booking.id;
+
+    if (!bookingId) {
+      return "Unavailable";
+    }
+
+    return bookingId.toString().slice(-8).toUpperCase();
+  };
+
   const canCancelBooking = (booking) => {
     return booking.status === "pending" || booking.status === "confirmed";
   };
@@ -161,12 +171,12 @@ function MyBookings() {
           <div className="space-y-5">
             {bookings.map((booking) => {
               const isCancelling = cancellingBookingId === booking._id;
-
               const canCancel = canCancelBooking(booking);
+              const bookingReference = getBookingReference(booking);
 
               return (
                 <article
-                  key={booking._id}
+                  key={booking._id || booking.id}
                   className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8"
                 >
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -178,6 +188,18 @@ function MyBookings() {
                       <h2 className="mt-1 text-xl font-bold text-slate-900">
                         {booking.service?.name || "Service"}
                       </h2>
+
+                      <div className="mt-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Booking reference
+                        </p>
+
+                        <p className="mt-1 font-mono text-sm font-bold text-slate-800">
+                          {bookingReference === "Unavailable"
+                            ? bookingReference
+                            : `#${bookingReference}`}
+                        </p>
+                      </div>
                     </div>
 
                     <span
