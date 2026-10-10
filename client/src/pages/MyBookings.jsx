@@ -5,6 +5,7 @@ import {
   formatBookingDate,
   formatBookingTime,
 } from "../utils/bookingFormatters";
+import BookingNotifications from "../components/BookingNotifications";
 
 const BOOKING_STATUSES = [
   "all",
@@ -292,6 +293,8 @@ function MyBookings() {
             </button>
           </div>
         </div>
+
+        {!isLoading && !error && <BookingNotifications bookings={bookings} />}
 
         {!isLoading && !error && (
           <div className="mb-6 space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
