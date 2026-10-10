@@ -1,201 +1,202 @@
 import { useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
-function formatDate(dateValue) {
-  if (!dateValue) return "Not available";
+function formatBookingDate(dateString) {
+  if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString || "Date unavailable";
+  }
 
-  const dateString = String(dateValue).slice(0, 10);
-  const parts = dateString.split("-");
-
-  if (parts.length !== 3) return dateString;
-
-  const [year, month, day] = parts.map(Number);
+  const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(year, month - 1, day);
 
-  return date.toLocaleDateString(undefined, {
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return dateString;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
     weekday: "long",
-    year: "numeric",
     month: "long",
     day: "numeric",
-  });
+    year: "numeric",
+  }).format(date);
+}
+
+function formatBookingTime(timeString) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeString || "");
+
+  if (!match) {
+    return timeString || "Time unavailable";
+  }
+
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
 }
 
 function BookingSuccess() {
   const location = useLocation();
-  const { booking, fallback } = location.state || {};
   const [copyMessage, setCopyMessage] = useState("");
+
+  const { booking, fallback } = location.state || {};
 
   if (!booking) {
     return <Navigate to="/bookings" replace />;
   }
 
-  const service =
-    booking.service && typeof booking.service === "object"
-      ? booking.service
-      : fallback?.service;
+  const bookingId = booking._id || booking.id;
+  const bookingReference = bookingId
+    ? bookingId.toString().slice(-8).toUpperCase()
+    : null;
 
+  const service = booking.service || fallback?.service || {};
   const date = booking.date || fallback?.date;
   const startTime = booking.startTime || fallback?.startTime;
   const endTime = booking.endTime || fallback?.endTime;
-  const price = service?.price ?? fallback?.service?.price;
-  const duration = service?.duration ?? fallback?.service?.duration;
-  const provider = service?.owner?.name || fallback?.service?.owner?.name;
-  const status = booking.status || "pending";
 
-  const bookingId =
-    typeof booking._id === "string"
-      ? booking._id
-      : typeof booking.id === "string"
-        ? booking.id
-        : "";
+  const handleCopyFullId = async () => {
+    setCopyMessage("");
 
-  const bookingReference = bookingId ? bookingId.slice(-8).toUpperCase() : "";
-
-  const handleCopyReference = async () => {
     if (!bookingId) {
-      setCopyMessage("Reference unavailable.");
+      setCopyMessage("The full booking ID is unavailable.");
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(bookingId);
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+
+      await navigator.clipboard.writeText(bookingId.toString());
       setCopyMessage("Full booking ID copied!");
     } catch {
       setCopyMessage(
-        `Copy isn't available here. Your full booking ID is: ${bookingId}`,
+        `Automatic copying failed. Your full booking ID is: ${bookingId}`,
       );
     }
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10">
+    <main className="min-h-screen bg-slate-50 px-4 py-12">
       <div className="mx-auto max-w-2xl">
-        <section className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-200 sm:p-10">
-          <div
-            className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl font-bold text-green-700"
-            aria-hidden="true"
-          >
-            ✓
+        <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="bg-green-50 px-6 py-10 text-center sm:px-10">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl text-green-700">
+              ✓
+            </div>
+
+            <h1 className="mt-5 text-3xl font-bold text-slate-900">
+              Booking successful!
+            </h1>
+
+            <p className="mt-3 text-slate-600">
+              Your booking has been submitted. You can review its status and
+              details below.
+            </p>
           </div>
 
-          <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-green-700">
-            Booking submitted
-          </p>
-
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">
-            Your appointment is booked!
-          </h1>
-
-          <p className="mx-auto mt-3 max-w-lg leading-6 text-slate-600">
-            Your booking was created successfully. Keep your reference for
-            future enquiries, and check your bookings for status updates.
-          </p>
-
-          {bookingReference && (
-            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5 text-left">
-              <p className="text-sm font-medium text-slate-600">
+          <div className="p-6 sm:p-10">
+            <div className="rounded-xl border border-slate-200 p-5">
+              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Booking reference
               </p>
 
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                <p className="font-mono text-xl font-bold tracking-wider text-slate-900">
-                  #{bookingReference}
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <p className="font-mono text-2xl font-bold text-slate-900">
+                  {bookingReference ? `#${bookingReference}` : "Unavailable"}
                 </p>
 
-                <button
-                  type="button"
-                  onClick={handleCopyReference}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                >
-                  Copy full ID
-                </button>
+                {bookingId && (
+                  <button
+                    type="button"
+                    onClick={handleCopyFullId}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Copy full ID
+                  </button>
+                )}
               </div>
 
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                Use this reference to identify your booking. The copy button
-                copies the full booking ID.
-              </p>
-
               {copyMessage && (
-                <p role="status" className="mt-2 text-sm text-slate-700">
+                <p
+                  className="mt-3 break-words text-sm text-slate-600"
+                  role="status"
+                >
                   {copyMessage}
                 </p>
               )}
-            </div>
-          )}
 
-          <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5 text-left sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <p className="mt-3 text-sm text-slate-500">
+                Keep this reference for your records.
+              </p>
+            </div>
+
+            <div className="mt-6 space-y-5">
               <div>
                 <p className="text-sm text-slate-500">Service</p>
-                <h2 className="mt-1 text-xl font-bold text-slate-900">
-                  {service?.name || "Your selected service"}
-                </h2>
+                <p className="mt-1 text-lg font-semibold text-slate-900">
+                  {service.name || "Service"}
+                </p>
               </div>
 
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold capitalize text-amber-800">
-                {status}
-              </span>
+              <div>
+                <p className="text-sm text-slate-500">Appointment date</p>
+                <p className="mt-1 font-semibold leading-relaxed text-slate-900">
+                  {formatBookingDate(date)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-500">Appointment time</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {formatBookingTime(startTime)} – {formatBookingTime(endTime)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-500">Status</p>
+                <p className="mt-1 font-semibold capitalize text-slate-900">
+                  {booking.status || "Pending"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-500">Service provider</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {service.owner?.name || "Provider information unavailable"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-500">Price</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  ${service.price ?? "—"}
+                </p>
+              </div>
             </div>
 
-            <dl className="mt-5 space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <dt className="text-sm text-slate-600">Date</dt>
-                <dd className="text-right text-sm font-semibold text-slate-900">
-                  {formatDate(date)}
-                </dd>
-              </div>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                to="/bookings"
+                className="inline-flex justify-center rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+              >
+                View my bookings
+              </Link>
 
-              <div className="flex items-start justify-between gap-4">
-                <dt className="text-sm text-slate-600">Time</dt>
-                <dd className="text-right text-sm font-semibold text-slate-900">
-                  {startTime
-                    ? `${startTime}${endTime ? ` – ${endTime}` : ""}`
-                    : "Not available"}
-                </dd>
-              </div>
-
-              {duration != null && (
-                <div className="flex items-start justify-between gap-4">
-                  <dt className="text-sm text-slate-600">Duration</dt>
-                  <dd className="text-right text-sm font-semibold text-slate-900">
-                    {duration} minutes
-                  </dd>
-                </div>
-              )}
-
-              {provider && (
-                <div className="flex items-start justify-between gap-4">
-                  <dt className="text-sm text-slate-600">Provider</dt>
-                  <dd className="text-right text-sm font-semibold text-slate-900">
-                    {provider}
-                  </dd>
-                </div>
-              )}
-
-              {price != null && (
-                <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-4">
-                  <dt className="font-semibold text-slate-900">Total price</dt>
-                  <dd className="text-xl font-bold text-slate-900">${price}</dd>
-                </div>
-              )}
-            </dl>
-          </div>
-
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
-            <Link
-              to="/bookings"
-              className="rounded-lg bg-slate-900 px-5 py-3 text-center font-semibold text-white transition hover:bg-slate-700"
-            >
-              View my bookings
-            </Link>
-
-            <Link
-              to="/services"
-              className="rounded-lg border border-slate-300 px-5 py-3 text-center font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-            >
-              Browse services
-            </Link>
+              <Link
+                to="/services"
+                className="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Browse more services
+              </Link>
+            </div>
           </div>
         </section>
       </div>
