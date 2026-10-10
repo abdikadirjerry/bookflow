@@ -4,6 +4,7 @@ import Register from "./pages/Register";
 import Services from "./pages/Services";
 import ServiceDetails from "./pages/ServiceDetails";
 import Booking from "./pages/Booking";
+import BookingSuccess from "./pages/BookingSuccess";
 import MyBookings from "./pages/MyBookings";
 import Dashboard from "./pages/Dashboard";
 import OwnerServices from "./pages/OwnerServices";
@@ -26,6 +27,7 @@ function App() {
           <Route path="/services" element={<Services />} />
           <Route path="/services/:serviceId" element={<ServiceDetails />} />
           <Route path="/services/:serviceId/book" element={<Booking />} />
+          <Route path="/booking-success" element={<BookingSuccess />} />
           <Route path="/bookings" element={<MyBookings />} />
         </Route>
 

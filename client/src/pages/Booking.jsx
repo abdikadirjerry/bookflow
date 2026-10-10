@@ -170,13 +170,33 @@ function Booking() {
       setIsBooking(true);
       setBookingError("");
 
-      await createBooking({
+      const result = await createBooking({
         serviceId,
         date,
         startTime: selectedTime,
       });
 
-      navigate("/bookings");
+      const booking = result?.booking;
+
+      if (!booking) {
+        setBookingError(
+          "Your booking request returned an unexpected response. Please check My Bookings before trying again.",
+        );
+        return;
+      }
+
+      navigate("/booking-success", {
+        replace: true,
+        state: {
+          booking,
+          fallback: {
+            service,
+            date,
+            startTime: selectedTime,
+            endTime: selectedSlot?.endTime,
+          },
+        },
+      });
     } catch (error) {
       if (error.response?.status === 409) {
         setSelectedTime("");
