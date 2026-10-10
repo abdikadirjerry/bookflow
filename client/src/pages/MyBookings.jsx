@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { cancelBooking, getMyBookings } from "../services/bookingService";
 
@@ -26,26 +26,26 @@ function MyBookings() {
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [cancelError, setCancelError] = useState("");
 
-  useEffect(() => {
-    const fetchBookings = async () => {
-      try {
-        setIsLoading(true);
-        setError("");
+  const loadBookings = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError("");
 
-        const data = await getMyBookings();
-        setBookings(data.bookings || []);
-      } catch (error) {
-        setError(
-          error.response?.data?.message ||
-            "Unable to load your bookings. Please try again.",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchBookings();
+      const data = await getMyBookings();
+      setBookings(data.bookings || []);
+    } catch (error) {
+      setError(
+        error.response?.data?.message ||
+          "Unable to load your bookings. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   const getStatusClasses = (status) => {
     const statusClasses = {
@@ -105,13 +105,11 @@ function MyBookings() {
   };
 
   const getCreationTimestamp = (booking) => {
-    const createdAt = booking.createdAt;
-
-    if (!createdAt) {
+    if (!booking.createdAt) {
       return 0;
     }
 
-    const timestamp = new Date(createdAt).getTime();
+    const timestamp = new Date(booking.createdAt).getTime();
 
     return Number.isNaN(timestamp) ? 0 : timestamp;
   };
@@ -151,10 +149,7 @@ function MyBookings() {
         return getCreationTimestamp(a) - getCreationTimestamp(b);
       }
 
-      const timestampA = getAppointmentTimestamp(a);
-      const timestampB = getAppointmentTimestamp(b);
-
-      return timestampA - timestampB;
+      return getAppointmentTimestamp(a) - getAppointmentTimestamp(b);
     });
 
     return sorted;
@@ -195,6 +190,11 @@ function MyBookings() {
     }
   };
 
+  const handleRefresh = async () => {
+    setCancelError("");
+    await loadBookings();
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-5xl">
@@ -206,13 +206,26 @@ function MyBookings() {
             ← Browse services
           </Link>
 
-          <h1 className="mt-6 text-3xl font-bold text-slate-900 sm:text-4xl">
-            My bookings
-          </h1>
+          <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
+                My bookings
+              </h1>
 
-          <p className="mt-3 text-slate-600">
-            View and manage your appointments.
-          </p>
+              <p className="mt-3 text-slate-600">
+                View and manage your appointments.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="inline-flex w-fit items-center justify-center rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoading ? "Refreshing..." : "Refresh bookings"}
+            </button>
+          </div>
         </div>
 
         {!isLoading && !error && (
@@ -273,7 +286,10 @@ function MyBookings() {
         )}
 
         {isLoading && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+          <div
+            role="status"
+            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
+          >
             <p className="text-slate-600">Loading your bookings...</p>
           </div>
         )}
@@ -288,6 +304,14 @@ function MyBookings() {
             </h2>
 
             <p className="mt-2 text-sm text-red-700">{error}</p>
+
+            <button
+              type="button"
+              onClick={loadBookings}
+              className="mt-5 rounded-lg bg-red-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-800"
+            >
+              Try again
+            </button>
           </div>
         )}
 
