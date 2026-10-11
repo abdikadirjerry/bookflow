@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getOwnerBookings,
@@ -10,32 +10,63 @@ function OwnerBookings() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [updatingBookingId, setUpdatingBookingId] = useState(null);
+  const [updatingBookingIds, setUpdatingBookingIds] = useState([]);
 
-  useEffect(() => {
-    const fetchBookings = async () => {
-      try {
-        setIsLoading(true);
-        setError("");
+  // Prevent rapid duplicate requests before React has re-rendered.
+  const updatingIdsRef = useRef(new Set());
 
-        const data = await getOwnerBookings();
+  const fetchBookings = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError("");
 
-        setBookings(data.bookings || []);
-      } catch (error) {
-        setError(
-          error.response?.data?.message ||
-            "Unable to load bookings. Please try again.",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchBookings();
+      const data = await getOwnerBookings();
+      setBookings(data.bookings || []);
+    } catch (error) {
+      setError(
+        error.response?.data?.message ||
+          "Unable to load bookings. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const handleStatusUpdate = async (bookingId, status) => {
-    if (status === "cancelled") {
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
+
+  const handleStatusUpdate = async (bookingId, nextStatus) => {
+    // Stop duplicate requests for the same booking.
+    if (updatingIdsRef.current.has(bookingId)) {
+      return;
+    }
+
+    const booking = bookings.find((item) => item._id === bookingId);
+
+    if (!booking) {
+      setActionError(
+        "This booking could not be found. Refresh the page and try again.",
+      );
+      return;
+    }
+
+    // Keep the available actions aligned with the backend transition rules.
+    const allowedTransitions = {
+      pending: ["confirmed", "cancelled"],
+      confirmed: ["completed", "cancelled"],
+      completed: [],
+      cancelled: [],
+    };
+
+    if (!allowedTransitions[booking.status]?.includes(nextStatus)) {
+      setActionError(
+        "This booking can no longer be updated to that status. Refresh your bookings and try again.",
+      );
+      return;
+    }
+
+    if (nextStatus === "cancelled") {
       const confirmed = window.confirm(
         "Are you sure you want to cancel this booking?",
       );
@@ -45,45 +76,100 @@ function OwnerBookings() {
       }
     }
 
-    try {
-      setUpdatingBookingId(bookingId);
-      setActionError("");
+    updatingIdsRef.current.add(bookingId);
+    setUpdatingBookingIds((current) => [...current, bookingId]);
+    setActionError("");
 
-      const data = await updateBookingStatus(bookingId, status);
+    try {
+      const data = await updateBookingStatus(bookingId, nextStatus);
+
+      if (!data.booking) {
+        throw new Error("The server did not return the updated booking.");
+      }
 
       setBookings((currentBookings) =>
-        currentBookings.map((booking) =>
-          booking._id === bookingId ? data.booking : booking,
+        currentBookings.map((item) =>
+          item._id === bookingId ? data.booking : item,
         ),
       );
+
+      // Tell the shared navbar and notification components to refresh.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("bookflow:notifications-updated"));
+      }
     } catch (error) {
       setActionError(
         error.response?.data?.message ||
+          error.message ||
           "Unable to update the booking. Please try again.",
       );
+
+      // Reload server data in case the booking changed elsewhere.
+      try {
+        const data = await getOwnerBookings();
+        setBookings(data.bookings || []);
+      } catch {
+        // Keep the original action error visible if refreshing also fails.
+      }
     } finally {
-      setUpdatingBookingId(null);
+      updatingIdsRef.current.delete(bookingId);
+      setUpdatingBookingIds((current) =>
+        current.filter((id) => id !== bookingId),
+      );
     }
   };
 
   const getStatusClasses = (status) => {
-    if (status === "confirmed") {
-      return "bg-blue-50 text-blue-700";
-    }
+    const classes = {
+      pending: "bg-yellow-50 text-yellow-700",
+      confirmed: "bg-blue-50 text-blue-700",
+      completed: "bg-green-50 text-green-700",
+      cancelled: "bg-red-50 text-red-700",
+    };
 
-    if (status === "completed") {
-      return "bg-green-50 text-green-700";
-    }
-
-    if (status === "cancelled") {
-      return "bg-red-50 text-red-700";
-    }
-
-    return "bg-yellow-50 text-yellow-700";
+    return classes[status] || "bg-slate-100 text-slate-700";
   };
 
   const formatStatus = (status) => {
+    if (!status) {
+      return "Unknown";
+    }
+
     return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const formatDate = (date) => {
+    if (!date) {
+      return "Not specified";
+    }
+
+    // Preserve date-only strings to avoid timezone shifts.
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      return new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+      ).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return date;
+    }
+
+    return parsedDate.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   };
 
   return (
@@ -112,8 +198,29 @@ function OwnerBookings() {
           </div>
         </div>
 
+        {!isLoading && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600">
+              {bookings.length} {bookings.length === 1 ? "booking" : "bookings"}{" "}
+              found
+            </p>
+
+            <button
+              type="button"
+              onClick={fetchBookings}
+              disabled={isLoading || updatingBookingIds.length > 0}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Refresh bookings
+            </button>
+          </div>
+        )}
+
         {isLoading && (
-          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+          <div
+            role="status"
+            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
+          >
             <p className="text-slate-600">Loading bookings...</p>
           </div>
         )}
@@ -121,22 +228,38 @@ function OwnerBookings() {
         {!isLoading && error && (
           <div
             role="alert"
-            className="rounded-2xl bg-red-50 p-6 ring-1 ring-red-100"
+            className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-red-100"
           >
             <h2 className="font-semibold text-red-800">
               Unable to load bookings
             </h2>
 
             <p className="mt-2 text-sm text-red-700">{error}</p>
+
+            <button
+              type="button"
+              onClick={fetchBookings}
+              className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
+            >
+              Try again
+            </button>
           </div>
         )}
 
         {!isLoading && !error && actionError && (
           <div
             role="alert"
-            className="mb-5 rounded-xl bg-red-50 p-4 ring-1 ring-red-100"
+            className="mb-5 flex flex-col gap-3 rounded-xl bg-red-50 p-4 ring-1 ring-red-100 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="text-sm text-red-700">{actionError}</p>
+
+            <button
+              type="button"
+              onClick={() => setActionError("")}
+              className="self-start text-sm font-semibold text-red-800 underline hover:text-red-950 sm:self-auto"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -156,7 +279,9 @@ function OwnerBookings() {
         {!isLoading && !error && bookings.length > 0 && (
           <div className="space-y-5">
             {bookings.map((booking) => {
-              const isUpdating = updatingBookingId === booking._id;
+              const isUpdating = updatingBookingIds.includes(booking._id);
+              const canManage =
+                booking.status === "pending" || booking.status === "confirmed";
 
               return (
                 <article
@@ -198,7 +323,7 @@ function OwnerBookings() {
                           <p className="text-sm text-slate-500">Date</p>
 
                           <p className="mt-1 font-semibold text-slate-900">
-                            {booking.date}
+                            {formatDate(booking.date)}
                           </p>
                         </div>
 
@@ -206,7 +331,8 @@ function OwnerBookings() {
                           <p className="text-sm text-slate-500">Time</p>
 
                           <p className="mt-1 font-semibold text-slate-900">
-                            {booking.startTime} - {booking.endTime}
+                            {booking.startTime || "—"} -{" "}
+                            {booking.endTime || "—"}
                           </p>
                         </div>
 
@@ -221,8 +347,7 @@ function OwnerBookings() {
                     </div>
                   </div>
 
-                  {(booking.status === "pending" ||
-                    booking.status === "confirmed") && (
+                  {canManage && (
                     <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
                       {booking.status === "pending" && (
                         <button
@@ -260,6 +385,18 @@ function OwnerBookings() {
                       >
                         {isUpdating ? "Updating..." : "Cancel booking"}
                       </button>
+                    </div>
+                  )}
+
+                  {!canManage && (
+                    <div className="mt-6 border-t border-slate-200 pt-4">
+                      <p className="text-sm text-slate-500">
+                        {booking.status === "completed"
+                          ? "This booking has been completed. No further status changes are available."
+                          : booking.status === "cancelled"
+                            ? "This booking has been cancelled. No further status changes are available."
+                            : "No actions are available for this booking."}
+                      </p>
                     </div>
                   )}
                 </article>
