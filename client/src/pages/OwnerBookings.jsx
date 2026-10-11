@@ -1,18 +1,35 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getOwnerBookings,
   updateBookingStatus,
 } from "../services/bookingService";
 
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const ALLOWED_TRANSITIONS = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["completed", "cancelled"],
+  completed: [],
+  cancelled: [],
+};
+
 function OwnerBookings() {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("newest");
   const [updatingBookingIds, setUpdatingBookingIds] = useState([]);
 
-  // Prevent rapid duplicate requests before React has re-rendered.
   const updatingIdsRef = useRef(new Set());
 
   const fetchBookings = useCallback(async () => {
@@ -36,8 +53,89 @@ function OwnerBookings() {
     fetchBookings();
   }, [fetchBookings]);
 
+  const statusCounts = useMemo(() => {
+    const counts = {
+      all: bookings.length,
+      pending: 0,
+      confirmed: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+
+    bookings.forEach((booking) => {
+      if (Object.prototype.hasOwnProperty.call(counts, booking.status)) {
+        counts[booking.status] += 1;
+      }
+    });
+
+    return counts;
+  }, [bookings]);
+
+  const filteredBookings = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    const result = bookings.filter((booking) => {
+      const matchesStatus =
+        statusFilter === "all" || booking.status === statusFilter;
+
+      const searchableText = [
+        booking.service?.name,
+        booking.customer?.name,
+        booking.customer?.email,
+        booking.date,
+        booking.startTime,
+        booking.endTime,
+        booking._id,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return (
+        matchesStatus &&
+        (!normalizedSearch || searchableText.includes(normalizedSearch))
+      );
+    });
+
+    const getTimestamp = (booking) => {
+      const date = booking.date;
+
+      if (!date) {
+        return 0;
+      }
+
+      const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+
+      const parsedDate = dateOnlyMatch
+        ? new Date(
+            Number(dateOnlyMatch[1]),
+            Number(dateOnlyMatch[2]) - 1,
+            Number(dateOnlyMatch[3]),
+          )
+        : new Date(date);
+
+      if (Number.isNaN(parsedDate.getTime())) {
+        return 0;
+      }
+
+      const timeMatch = /^(\d{1,2}):(\d{2})/.exec(booking.startTime || "");
+
+      if (timeMatch) {
+        parsedDate.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+      }
+
+      return parsedDate.getTime();
+    };
+
+    result.sort((a, b) => {
+      const difference = getTimestamp(a) - getTimestamp(b);
+      return sortOrder === "newest" ? -difference : difference;
+    });
+
+    return result;
+  }, [bookings, search, statusFilter, sortOrder]);
+
   const handleStatusUpdate = async (bookingId, nextStatus) => {
-    // Stop duplicate requests for the same booking.
     if (updatingIdsRef.current.has(bookingId)) {
       return;
     }
@@ -45,23 +143,13 @@ function OwnerBookings() {
     const booking = bookings.find((item) => item._id === bookingId);
 
     if (!booking) {
-      setActionError(
-        "This booking could not be found. Refresh the page and try again.",
-      );
+      setActionError("Booking not found. Refresh and try again.");
       return;
     }
 
-    // Keep the available actions aligned with the backend transition rules.
-    const allowedTransitions = {
-      pending: ["confirmed", "cancelled"],
-      confirmed: ["completed", "cancelled"],
-      completed: [],
-      cancelled: [],
-    };
-
-    if (!allowedTransitions[booking.status]?.includes(nextStatus)) {
+    if (!ALLOWED_TRANSITIONS[booking.status]?.includes(nextStatus)) {
       setActionError(
-        "This booking can no longer be updated to that status. Refresh your bookings and try again.",
+        "This booking can no longer be updated to that status. Refresh and try again.",
       );
       return;
     }
@@ -87,16 +175,11 @@ function OwnerBookings() {
         throw new Error("The server did not return the updated booking.");
       }
 
-      setBookings((currentBookings) =>
-        currentBookings.map((item) =>
-          item._id === bookingId ? data.booking : item,
-        ),
+      setBookings((current) =>
+        current.map((item) => (item._id === bookingId ? data.booking : item)),
       );
 
-      // Tell the shared navbar and notification components to refresh.
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("bookflow:notifications-updated"));
-      }
+      window.dispatchEvent(new Event("bookflow:notifications-updated"));
     } catch (error) {
       setActionError(
         error.response?.data?.message ||
@@ -104,12 +187,11 @@ function OwnerBookings() {
           "Unable to update the booking. Please try again.",
       );
 
-      // Reload server data in case the booking changed elsewhere.
       try {
         const data = await getOwnerBookings();
         setBookings(data.bookings || []);
       } catch {
-        // Keep the original action error visible if refreshing also fails.
+        // Preserve the original status-update error.
       }
     } finally {
       updatingIdsRef.current.delete(bookingId);
@@ -131,35 +213,22 @@ function OwnerBookings() {
   };
 
   const formatStatus = (status) => {
-    if (!status) {
-      return "Unknown";
-    }
-
+    if (!status) return "Unknown";
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   const formatDate = (date) => {
-    if (!date) {
-      return "Not specified";
-    }
+    if (!date) return "Not specified";
 
-    // Preserve date-only strings to avoid timezone shifts.
     const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
 
-    if (dateOnlyMatch) {
-      const [, year, month, day] = dateOnlyMatch;
-      return new Date(
-        Number(year),
-        Number(month) - 1,
-        Number(day),
-      ).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    }
-
-    const parsedDate = new Date(date);
+    const parsedDate = dateOnlyMatch
+      ? new Date(
+          Number(dateOnlyMatch[1]),
+          Number(dateOnlyMatch[2]) - 1,
+          Number(dateOnlyMatch[3]),
+        )
+      : new Date(date);
 
     if (Number.isNaN(parsedDate.getTime())) {
       return date;
@@ -193,27 +262,135 @@ function OwnerBookings() {
             </h1>
 
             <p className="mt-3 max-w-2xl text-slate-600">
-              View and manage appointments booked for your services.
+              Search, filter, and manage appointments booked for your services.
             </p>
           </div>
         </div>
 
-        {!isLoading && (
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-600">
-              {bookings.length} {bookings.length === 1 ? "booking" : "bookings"}{" "}
-              found
-            </p>
-
-            <button
-              type="button"
-              onClick={fetchBookings}
-              disabled={isLoading || updatingBookingIds.length > 0}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+        {!isLoading && !error && (
+          <>
+            <section
+              aria-label="Booking counts"
+              className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
             >
-              Refresh bookings
-            </button>
-          </div>
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setStatusFilter(option.value)}
+                  aria-pressed={statusFilter === option.value}
+                  className={`rounded-xl border bg-white p-4 text-left transition hover:border-slate-400 ${
+                    statusFilter === option.value
+                      ? "border-slate-900 ring-1 ring-slate-900"
+                      : "border-slate-200"
+                  }`}
+                >
+                  <p className="text-sm text-slate-500">{option.label}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">
+                    {statusCounts[option.value]}
+                  </p>
+                </button>
+              ))}
+            </section>
+
+            <section
+              aria-label="Search and filter bookings"
+              className="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:p-5"
+            >
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="md:col-span-1">
+                  <label
+                    htmlFor="booking-search"
+                    className="mb-2 block text-sm font-semibold text-slate-700"
+                  >
+                    Search bookings
+                  </label>
+                  <input
+                    id="booking-search"
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Customer, email, service..."
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="booking-status"
+                    className="mb-2 block text-sm font-semibold text-slate-700"
+                  >
+                    Filter by status
+                  </label>
+                  <select
+                    id="booking-status"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  >
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} ({statusCounts[option.value]})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="booking-sort"
+                    className="mb-2 block text-sm font-semibold text-slate-700"
+                  >
+                    Sort by appointment date
+                  </label>
+                  <select
+                    id="booking-sort"
+                    value={sortOrder}
+                    onChange={(event) => setSortOrder(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="newest">Latest first</option>
+                    <option value="oldest">Earliest first</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                <p className="text-sm text-slate-600" aria-live="polite">
+                  Showing {filteredBookings.length} of {bookings.length}{" "}
+                  {bookings.length === 1 ? "booking" : "bookings"}
+                </p>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setStatusFilter("all");
+                      setSortOrder("newest");
+                    }}
+                    disabled={
+                      !search &&
+                      statusFilter === "all" &&
+                      sortOrder === "newest"
+                    }
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Clear filters
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={fetchBookings}
+                    disabled={updatingBookingIds.length > 0}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Refresh bookings
+                  </button>
+                </div>
+              </div>
+            </section>
+          </>
         )}
 
         {isLoading && (
@@ -233,9 +410,7 @@ function OwnerBookings() {
             <h2 className="font-semibold text-red-800">
               Unable to load bookings
             </h2>
-
             <p className="mt-2 text-sm text-red-700">{error}</p>
-
             <button
               type="button"
               onClick={fetchBookings}
@@ -252,7 +427,6 @@ function OwnerBookings() {
             className="mb-5 flex flex-col gap-3 rounded-xl bg-red-50 p-4 ring-1 ring-red-100 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="text-sm text-red-700">{actionError}</p>
-
             <button
               type="button"
               onClick={() => setActionError("")}
@@ -263,22 +437,37 @@ function OwnerBookings() {
           </div>
         )}
 
-        {!isLoading && !error && bookings.length === 0 && (
+        {!isLoading && !error && filteredBookings.length === 0 && (
           <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
             <h2 className="text-xl font-bold text-slate-900">
-              No bookings yet
+              {bookings.length === 0
+                ? "No bookings yet"
+                : "No matching bookings"}
             </h2>
-
             <p className="mt-2 text-slate-600">
-              When customers book your services, their appointments will appear
-              here.
+              {bookings.length === 0
+                ? "When customers book your services, their appointments will appear here."
+                : "Try changing your search or filters."}
             </p>
+            {bookings.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("all");
+                  setSortOrder("newest");
+                }}
+                className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         )}
 
-        {!isLoading && !error && bookings.length > 0 && (
+        {!isLoading && !error && filteredBookings.length > 0 && (
           <div className="space-y-5">
-            {bookings.map((booking) => {
+            {filteredBookings.map((booking) => {
               const isUpdating = updatingBookingIds.includes(booking._id);
               const canManage =
                 booking.status === "pending" || booking.status === "confirmed";
@@ -294,7 +483,6 @@ function OwnerBookings() {
                         <h2 className="text-xl font-bold text-slate-900">
                           {booking.service?.name || "Unknown service"}
                         </h2>
-
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
                             booking.status,
@@ -307,11 +495,9 @@ function OwnerBookings() {
                       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <p className="text-sm text-slate-500">Customer</p>
-
                           <p className="mt-1 font-semibold text-slate-900">
                             {booking.customer?.name || "Unknown customer"}
                           </p>
-
                           {booking.customer?.email && (
                             <p className="mt-1 break-all text-sm text-slate-600">
                               {booking.customer.email}
@@ -321,7 +507,6 @@ function OwnerBookings() {
 
                         <div>
                           <p className="text-sm text-slate-500">Date</p>
-
                           <p className="mt-1 font-semibold text-slate-900">
                             {formatDate(booking.date)}
                           </p>
@@ -329,7 +514,6 @@ function OwnerBookings() {
 
                         <div>
                           <p className="text-sm text-slate-500">Time</p>
-
                           <p className="mt-1 font-semibold text-slate-900">
                             {booking.startTime || "—"} -{" "}
                             {booking.endTime || "—"}
@@ -338,7 +522,6 @@ function OwnerBookings() {
 
                         <div>
                           <p className="text-sm text-slate-500">Price</p>
-
                           <p className="mt-1 font-semibold text-slate-900">
                             ${booking.service?.price ?? 0}
                           </p>
