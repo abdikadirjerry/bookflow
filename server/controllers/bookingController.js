@@ -574,37 +574,55 @@ const cancelBooking = async (req, res) => {
       });
     }
 
-    booking.status = "cancelled";
-
-    await booking.save();
-
-    const updatedBooking = await Booking.findById(booking._id).populate(
-      "service",
-      "name description duration price",
+    // Atomically cancel only if the status has not changed.
+    const cancelledBooking = await Booking.findOneAndUpdate(
+      {
+        _id: id,
+        customer: req.user.userId,
+        status: booking.status,
+      },
+      {
+        $set: { status: "cancelled" },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
     );
 
-    const service = await Service.findById(booking.service).select(
+    if (!cancelledBooking) {
+      return res.status(409).json({
+        message:
+          "This booking was updated by another request. Refresh and try again.",
+      });
+    }
+
+    const updatedBooking = await Booking.findById(
+      cancelledBooking._id,
+    ).populate("service", "name description duration price");
+
+    const service = await Service.findById(cancelledBooking.service).select(
       "name owner",
     );
 
     if (service) {
       await createBookingNotification({
         recipient: service.owner,
-        booking: booking._id,
+        booking: cancelledBooking._id,
         type: "booking_cancelled",
         title: "Booking cancelled",
-        message: `A customer cancelled their booking for ${service.name} on ${booking.date} at ${booking.startTime}.`,
+        message: `A customer cancelled their booking for ${service.name} on ${cancelledBooking.date} at ${cancelledBooking.startTime}.`,
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Booking cancelled successfully",
       booking: updatedBooking,
     });
   } catch (error) {
     console.error("Cancel booking error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while cancelling booking",
     });
   }
@@ -694,17 +712,36 @@ const updateBookingStatus = async (req, res) => {
       cancelled: [],
     };
 
-    if (!allowedTransitions[booking.status].includes(status)) {
+    if (!allowedTransitions[booking.status]?.includes(status)) {
       return res.status(400).json({
         message: `Cannot change booking status from ${booking.status} to ${status}`,
       });
     }
 
-    booking.status = status;
+    // Update only if the booking still has the status we checked above.
+    const changedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: id,
+        service: booking.service,
+        status: booking.status,
+      },
+      {
+        $set: { status },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
 
-    await booking.save();
+    if (!changedBooking) {
+      return res.status(409).json({
+        message:
+          "This booking was updated by another request. Refresh and try again.",
+      });
+    }
 
-    const updatedBooking = await Booking.findById(booking._id)
+    const updatedBooking = await Booking.findById(changedBooking._id)
       .populate("customer", "name email")
       .populate("service", "name description duration price");
 
@@ -712,17 +749,17 @@ const updateBookingStatus = async (req, res) => {
       confirmed: {
         type: "booking_confirmed",
         title: "Booking confirmed",
-        message: `Your booking for ${service.name} on ${booking.date} at ${booking.startTime} has been confirmed.`,
+        message: `Your booking for ${service.name} on ${changedBooking.date} at ${changedBooking.startTime} has been confirmed.`,
       },
       completed: {
         type: "booking_completed",
         title: "Booking completed",
-        message: `Your booking for ${service.name} on ${booking.date} has been marked as completed.`,
+        message: `Your booking for ${service.name} on ${changedBooking.date} has been marked as completed.`,
       },
       cancelled: {
         type: "booking_cancelled",
         title: "Booking cancelled",
-        message: `Your booking for ${service.name} on ${booking.date} at ${booking.startTime} has been cancelled by the business.`,
+        message: `Your booking for ${service.name} on ${changedBooking.date} at ${changedBooking.startTime} has been cancelled by the business.`,
       },
     };
 
@@ -730,13 +767,13 @@ const updateBookingStatus = async (req, res) => {
 
     if (notification) {
       await createBookingNotification({
-        recipient: booking.customer,
-        booking: booking._id,
+        recipient: changedBooking.customer,
+        booking: changedBooking._id,
         ...notification,
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Booking status updated successfully",
       booking: updatedBooking,
     });
@@ -749,7 +786,7 @@ const updateBookingStatus = async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while updating booking status",
     });
   }
