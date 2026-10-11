@@ -31,6 +31,7 @@ function MyBookings() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
+  const [isCancellingAnyBooking, setIsCancellingAnyBooking] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const [copiedBookingId, setCopiedBookingId] = useState(null);
   const [copyError, setCopyError] = useState("");
@@ -140,6 +141,7 @@ function MyBookings() {
     }
 
     const timestamp = new Date(booking.createdAt).getTime();
+
     return Number.isNaN(timestamp) ? 0 : timestamp;
   };
 
@@ -180,6 +182,7 @@ function MyBookings() {
         selectedStatus === "all" || booking.status === selectedStatus;
 
       const serviceName = (booking.service?.name || "").toLowerCase();
+
       const reference = (getBookingReference(booking) || "").toLowerCase();
 
       const matchesSearch =
@@ -217,8 +220,23 @@ function MyBookings() {
   ]);
 
   const handleCancelBooking = async (bookingId) => {
+    if (isCancellingAnyBooking) {
+      return;
+    }
+
+    const booking = bookings.find(
+      (item) => (item._id || item.id) === bookingId,
+    );
+
+    if (!booking || !canCancelBooking(booking)) {
+      setCancelError(
+        "This booking can no longer be cancelled. Refresh your bookings.",
+      );
+      return;
+    }
+
     const confirmed = window.confirm(
-      "Are you sure you want to cancel this booking?",
+      "Are you sure you want to cancel this booking? This action cannot be undone.",
     );
 
     if (!confirmed) {
@@ -226,25 +244,35 @@ function MyBookings() {
     }
 
     try {
+      setIsCancellingAnyBooking(true);
       setCancellingBookingId(bookingId);
       setCancelError("");
 
       const data = await cancelBooking(bookingId);
 
       setBookings((currentBookings) =>
-        currentBookings.map((booking) =>
-          (booking._id || booking.id) === bookingId
-            ? { ...booking, status: data.booking?.status || "cancelled" }
-            : booking,
+        currentBookings.map((item) =>
+          (item._id || item.id) === bookingId
+            ? {
+                ...item,
+                status: data.booking?.status || "cancelled",
+              }
+            : item,
         ),
       );
+
+      window.dispatchEvent(new Event("bookflow:notifications-updated"));
     } catch (error) {
       setCancelError(
         error.response?.data?.message ||
           "Unable to cancel this booking. Please try again.",
       );
+
+      // Reload to reflect any changes made on the server.
+      await loadBookings();
     } finally {
       setCancellingBookingId(null);
+      setIsCancellingAnyBooking(false);
     }
   };
 
@@ -252,6 +280,7 @@ function MyBookings() {
     setCancelError("");
     setCopyError("");
     setCopiedBookingId(null);
+
     await loadBookings();
   };
 
@@ -621,7 +650,8 @@ function MyBookings() {
                       <button
                         type="button"
                         onClick={() => handleCancelBooking(bookingId)}
-                        disabled={isCancelling}
+                        disabled={isCancellingAnyBooking}
+                        aria-busy={isCancelling}
                         className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isCancelling ? "Cancelling..." : "Cancel booking"}
