@@ -9,6 +9,7 @@ const serviceRoutes = require("./routes/serviceRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const userRoutes = require("./routes/userRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const errorHandler = require("./middleware/errorMiddleware");
 
 dotenv.config();
@@ -35,6 +36,7 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/availability", availabilityRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.json({
