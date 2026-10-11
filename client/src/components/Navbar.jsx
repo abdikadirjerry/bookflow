@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getNotifications } from "../services/notificationService";
@@ -12,41 +12,67 @@ function Navbar() {
 
   const isOwner = user?.role === "business_owner";
 
-  useEffect(() => {
+  const loadUnreadCount = useCallback(async () => {
     if (!isAuthenticated) {
       setUnreadCount(0);
-      return undefined;
+      return;
     }
 
-    let active = true;
+    try {
+      const data = await getNotifications();
+      setUnreadCount(Math.max(0, Number(data?.unreadCount) || 0));
+    } catch (error) {
+      console.error("Unable to load unread notifications:", error);
+    }
+  }, [isAuthenticated]);
 
-    const loadUnreadCount = async () => {
+  useEffect(() => {
+    let active = true;
+    let requestInProgress = false;
+
+    const refreshUnreadCount = async () => {
+      if (!isAuthenticated) {
+        setUnreadCount(0);
+        return;
+      }
+
+      if (requestInProgress) return;
+
+      requestInProgress = true;
+
       try {
         const data = await getNotifications();
 
         if (active) {
-          setUnreadCount(Math.max(0, Number(data.unreadCount) || 0));
+          setUnreadCount(Math.max(0, Number(data?.unreadCount) || 0));
         }
       } catch (error) {
-        console.error("Unable to load unread notifications:", error);
+        if (active) {
+          console.error("Unable to load unread notifications:", error);
+        }
+      } finally {
+        requestInProgress = false;
       }
     };
 
-    const handleRefresh = () => {
-      loadUnreadCount();
+    const handleNotificationsUpdated = () => {
+      refreshUnreadCount();
     };
 
-    loadUnreadCount();
+    refreshUnreadCount();
 
-    window.addEventListener("focus", handleRefresh);
-    window.addEventListener("bookflow:notifications-updated", handleRefresh);
+    window.addEventListener("focus", refreshUnreadCount);
+    window.addEventListener(
+      "bookflow:notifications-updated",
+      handleNotificationsUpdated,
+    );
 
     return () => {
       active = false;
-      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("focus", refreshUnreadCount);
       window.removeEventListener(
         "bookflow:notifications-updated",
-        handleRefresh,
+        handleNotificationsUpdated,
       );
     };
   }, [isAuthenticated, location.pathname]);
