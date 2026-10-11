@@ -15,6 +15,7 @@ import EditService from "./pages/EditService";
 import OwnerBookings from "./pages/OwnerBookings";
 import OwnerCustomers from "./pages/OwnerCustomers";
 import OwnerAvailability from "./pages/OwnerAvailability";
+import Notifications from "./pages/Notifications";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleRoute from "./routes/RoleRoute";
@@ -44,6 +45,7 @@ function App() {
             <Route path="/booking-success" element={<BookingSuccess />} />
             <Route path="/bookings" element={<MyBookings />} />
             <Route path="/bookings/:bookingId" element={<BookingDetails />} />
+            <Route path="/notifications" element={<Notifications />} />
 
             <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>
               <Route path="/dashboard" element={<Dashboard />} />

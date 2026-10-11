@@ -25,36 +25,28 @@ function Navbar() {
         const data = await getNotifications();
 
         if (active) {
-          setUnreadCount(
-            Number.isFinite(Number(data.unreadCount))
-              ? Math.max(0, Number(data.unreadCount))
-              : 0,
-          );
+          setUnreadCount(Math.max(0, Number(data.unreadCount) || 0));
         }
       } catch (error) {
-        // Keep navigation usable if notifications cannot be loaded.
         console.error("Unable to load unread notifications:", error);
       }
     };
 
-    const refreshNotifications = () => {
+    const handleRefresh = () => {
       loadUnreadCount();
     };
 
     loadUnreadCount();
 
-    window.addEventListener("focus", refreshNotifications);
-    window.addEventListener(
-      "bookflow:notifications-updated",
-      refreshNotifications,
-    );
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener("bookflow:notifications-updated", handleRefresh);
 
     return () => {
       active = false;
-      window.removeEventListener("focus", refreshNotifications);
+      window.removeEventListener("focus", handleRefresh);
       window.removeEventListener(
         "bookflow:notifications-updated",
-        refreshNotifications,
+        handleRefresh,
       );
     };
   }, [isAuthenticated, location.pathname]);
@@ -74,9 +66,6 @@ function Navbar() {
   if (!isAuthenticated) {
     return null;
   }
-
-  const bookingPath = isOwner ? "/owner/bookings" : "/bookings";
-  const bookingLabel = isOwner ? "Bookings" : "My Bookings";
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
@@ -109,17 +98,26 @@ function Navbar() {
               <NavLink to="/owner/availability" className={linkClass}>
                 Availability
               </NavLink>
+
+              <NavLink to="/owner/bookings" className={linkClass}>
+                Bookings
+              </NavLink>
             </>
           ) : (
-            <NavLink to="/services" className={linkClass}>
-              Services
-            </NavLink>
+            <>
+              <NavLink to="/services" className={linkClass}>
+                Services
+              </NavLink>
+
+              <NavLink to="/bookings" className={linkClass}>
+                My Bookings
+              </NavLink>
+            </>
           )}
 
-          <NavLink to={bookingPath} className={linkClass}>
+          <NavLink to="/notifications" className={linkClass}>
             <span className="inline-flex items-center gap-2">
-              {bookingLabel}
-
+              Notifications
               {unreadCount > 0 && (
                 <span
                   aria-label={`${unreadCount} unread notifications`}
