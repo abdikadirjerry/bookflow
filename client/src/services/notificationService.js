@@ -8,6 +8,10 @@ const getNotifications = async () => {
 const markNotificationAsRead = async (notificationId) => {
   const response = await api.patch(`/notifications/${notificationId}/read`);
 
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("bookflow:notifications-updated"));
+  }
+
   return response.data;
 };
 

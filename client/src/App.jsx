@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Services from "./pages/Services";
@@ -14,8 +15,19 @@ import EditService from "./pages/EditService";
 import OwnerBookings from "./pages/OwnerBookings";
 import OwnerCustomers from "./pages/OwnerCustomers";
 import OwnerAvailability from "./pages/OwnerAvailability";
+
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleRoute from "./routes/RoleRoute";
+import Navbar from "./components/Navbar";
+
+function AppLayout() {
+  return (
+    <>
+      <Navbar />
+      <Outlet />
+    </>
+  );
+}
 
 function App() {
   return (
@@ -25,25 +37,30 @@ function App() {
         <Route path="/register" element={<Register />} />
 
         <Route element={<ProtectedRoute />}>
-          <Route path="/services" element={<Services />} />
-          <Route path="/services/:serviceId" element={<ServiceDetails />} />
-          <Route path="/services/:serviceId/book" element={<Booking />} />
-          <Route path="/booking-success" element={<BookingSuccess />} />
-          <Route path="/bookings" element={<MyBookings />} />
-          <Route path="/bookings/:bookingId" element={<BookingDetails />} />
-        </Route>
+          <Route element={<AppLayout />}>
+            <Route path="/services" element={<Services />} />
+            <Route path="/services/:serviceId" element={<ServiceDetails />} />
+            <Route path="/services/:serviceId/book" element={<Booking />} />
+            <Route path="/booking-success" element={<BookingSuccess />} />
+            <Route path="/bookings" element={<MyBookings />} />
+            <Route path="/bookings/:bookingId" element={<BookingDetails />} />
 
-        <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/owner/services" element={<OwnerServices />} />
-          <Route path="/owner/services/new" element={<CreateService />} />
-          <Route
-            path="/owner/services/:serviceId/edit"
-            element={<EditService />}
-          />
-          <Route path="/owner/bookings" element={<OwnerBookings />} />
-          <Route path="/owner/customers" element={<OwnerCustomers />} />
-          <Route path="/owner/availability" element={<OwnerAvailability />} />
+            <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/owner/services" element={<OwnerServices />} />
+              <Route path="/owner/services/new" element={<CreateService />} />
+              <Route
+                path="/owner/services/:serviceId/edit"
+                element={<EditService />}
+              />
+              <Route path="/owner/bookings" element={<OwnerBookings />} />
+              <Route path="/owner/customers" element={<OwnerCustomers />} />
+              <Route
+                path="/owner/availability"
+                element={<OwnerAvailability />}
+              />
+            </Route>
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>
