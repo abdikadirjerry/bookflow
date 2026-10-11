@@ -4,6 +4,7 @@ const Booking = require("../models/Booking");
 const BookingDayLock = require("../models/BookingDayLock");
 const Service = require("../models/Service");
 const Availability = require("../models/Availability");
+const createBookingNotification = require("../utils/createBookingNotification");
 
 const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -299,6 +300,14 @@ const createBooking = async (req, res) => {
       .populate("customer", "name email")
       .populate("service", "name description duration price");
 
+    await createBookingNotification({
+      recipient: booking.customer,
+      booking: booking._id,
+      type: "booking_created",
+      title: "Booking request received",
+      message: `Your booking request for ${service.name} on ${date} at ${startTime} has been received.`,
+    });
+
     res.status(201).json({
       message: "Booking created successfully",
       booking: populatedBooking,
@@ -574,6 +583,20 @@ const cancelBooking = async (req, res) => {
       "name description duration price",
     );
 
+    const service = await Service.findById(booking.service).select(
+      "name owner",
+    );
+
+    if (service) {
+      await createBookingNotification({
+        recipient: service.owner,
+        booking: booking._id,
+        type: "booking_cancelled",
+        title: "Booking cancelled",
+        message: `A customer cancelled their booking for ${service.name} on ${booking.date} at ${booking.startTime}.`,
+      });
+    }
+
     res.status(200).json({
       message: "Booking cancelled successfully",
       booking: updatedBooking,
@@ -684,6 +707,34 @@ const updateBookingStatus = async (req, res) => {
     const updatedBooking = await Booking.findById(booking._id)
       .populate("customer", "name email")
       .populate("service", "name description duration price");
+
+    const notificationDetails = {
+      confirmed: {
+        type: "booking_confirmed",
+        title: "Booking confirmed",
+        message: `Your booking for ${service.name} on ${booking.date} at ${booking.startTime} has been confirmed.`,
+      },
+      completed: {
+        type: "booking_completed",
+        title: "Booking completed",
+        message: `Your booking for ${service.name} on ${booking.date} has been marked as completed.`,
+      },
+      cancelled: {
+        type: "booking_cancelled",
+        title: "Booking cancelled",
+        message: `Your booking for ${service.name} on ${booking.date} at ${booking.startTime} has been cancelled by the business.`,
+      },
+    };
+
+    const notification = notificationDetails[status];
+
+    if (notification) {
+      await createBookingNotification({
+        recipient: booking.customer,
+        booking: booking._id,
+        ...notification,
+      });
+    }
 
     res.status(200).json({
       message: "Booking status updated successfully",
