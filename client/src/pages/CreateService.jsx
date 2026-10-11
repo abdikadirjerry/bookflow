@@ -10,18 +10,93 @@ const SERVICE_CATEGORIES = [
   "Other",
 ];
 
+const INITIAL_FORM_DATA = {
+  name: "",
+  category: "Other",
+  description: "",
+  duration: "",
+  price: "",
+};
+
+function validateForm(formData) {
+  const errors = {};
+
+  const name = formData.name.trim();
+  const description = formData.description.trim();
+  const duration = Number(formData.duration);
+  const price = Number(formData.price);
+
+  if (!name) {
+    errors.name = "Service name is required.";
+  } else if (name.length < 2) {
+    errors.name = "Use at least 2 characters.";
+  } else if (name.length > 100) {
+    errors.name = "Service name cannot exceed 100 characters.";
+  }
+
+  if (!SERVICE_CATEGORIES.includes(formData.category)) {
+    errors.category = "Please select a valid category.";
+  }
+
+  if (!description) {
+    errors.description = "Service description is required.";
+  } else if (description.length < 10) {
+    errors.description = "Use at least 10 characters.";
+  } else if (description.length > 1000) {
+    errors.description = "Description cannot exceed 1,000 characters.";
+  }
+
+  if (formData.duration.trim() === "") {
+    errors.duration = "Service duration is required.";
+  } else if (
+    !Number.isFinite(duration) ||
+    !Number.isInteger(duration) ||
+    duration < 1
+  ) {
+    errors.duration = "Enter a whole number of minutes, starting at 1.";
+  }
+
+  if (formData.price.trim() === "") {
+    errors.price = "Service price is required.";
+  } else if (!Number.isFinite(price) || price < 0) {
+    errors.price = "Enter a valid price of zero or more.";
+  } else if (Math.round(price * 100) !== price * 100) {
+    errors.price = "Price can have at most 2 decimal places.";
+  }
+
+  return errors;
+}
+
+function getApiErrorMessage(error) {
+  const status = error.response?.status;
+  const message = error.response?.data?.message;
+
+  if (status === 401 || status === 403) {
+    return (
+      message ||
+      "You are not authorized to create a service. Please sign in again if needed."
+    );
+  }
+
+  if (status === 400 || status === 422) {
+    return (
+      message || "Some service details are invalid. Please review the form."
+    );
+  }
+
+  if (!error.response) {
+    return "Unable to reach the server. Check your connection and try again.";
+  }
+
+  return message || "Unable to create the service. Please try again.";
+}
+
 function CreateService() {
   const navigate = useNavigate();
 
-  const [formData, setFormData] = useState({
-    name: "",
-    category: "Other",
-    description: "",
-    duration: "",
-    price: "",
-  });
-
-  const [error, setError] = useState("");
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
+  const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (event) => {
@@ -31,85 +106,59 @@ function CreateService() {
       ...currentData,
       [name]: value,
     }));
+
+    setErrors((currentErrors) => {
+      if (!currentErrors[name]) return currentErrors;
+
+      const nextErrors = { ...currentErrors };
+      delete nextErrors[name];
+      return nextErrors;
+    });
+
+    setSubmitError("");
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    setError("");
+    // Prevent repeated submissions while a request is in progress.
+    if (isLoading) return;
 
-    const name = formData.name.trim();
-    const category = formData.category;
-    const description = formData.description.trim();
-    const duration = formData.duration;
-    const price = formData.price;
+    const validationErrors = validateForm(formData);
+    setErrors(validationErrors);
+    setSubmitError("");
 
-    if (!name) {
-      setError("Service name is required.");
+    if (Object.keys(validationErrors).length > 0) {
+      const firstInvalidField = Object.keys(validationErrors)[0];
+      document.getElementById(firstInvalidField)?.focus();
       return;
     }
 
-    if (name.length < 2) {
-      setError("Service name must be at least 2 characters.");
-      return;
-    }
-
-    if (!SERVICE_CATEGORIES.includes(category)) {
-      setError("Please select a valid service category.");
-      return;
-    }
-
-    if (!description) {
-      setError("Service description is required.");
-      return;
-    }
-
-    if (description.length < 10) {
-      setError("Service description must be at least 10 characters.");
-      return;
-    }
-
-    if (!duration) {
-      setError("Service duration is required.");
-      return;
-    }
-
-    if (Number(duration) < 1) {
-      setError("Service duration must be at least 1 minute.");
-      return;
-    }
-
-    if (price === "") {
-      setError("Service price is required.");
-      return;
-    }
-
-    if (!Number.isFinite(Number(price)) || Number(price) < 0) {
-      setError("Please enter a valid price of zero or more.");
-      return;
-    }
+    setIsLoading(true);
 
     try {
-      setIsLoading(true);
-
       await createService({
-        name,
-        category,
-        description,
-        duration: Number(duration),
-        price: Number(price),
+        name: formData.name.trim(),
+        category: formData.category,
+        description: formData.description.trim(),
+        duration: Number(formData.duration),
+        price: Number(formData.price),
       });
 
-      navigate("/owner/services");
+      navigate("/owner/services", {
+        state: { message: "Service created successfully." },
+      });
     } catch (error) {
-      setError(
-        error.response?.data?.message ||
-          "Unable to create the service. Please try again.",
-      );
+      setSubmitError(getApiErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
   };
+
+  const inputClass = (fieldName) =>
+    `w-full rounded-lg border px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100 ${
+      errors[fieldName] ? "border-red-500" : "border-slate-300"
+    }`;
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
@@ -121,7 +170,7 @@ function CreateService() {
           ← Back to services
         </Link>
 
-        <div className="mt-6">
+        <header className="mt-6">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Business management
           </p>
@@ -133,19 +182,19 @@ function CreateService() {
           <p className="mt-3 text-slate-600">
             Add a service that customers can book.
           </p>
-        </div>
+        </header>
 
-        <div className="mt-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-          {error && (
+        <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+          {submitError && (
             <div
               role="alert"
               className="mb-6 rounded-lg bg-red-50 p-4 ring-1 ring-red-100"
             >
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-red-700">{submitError}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} noValidate className="space-y-6">
             <div>
               <label
                 htmlFor="name"
@@ -161,9 +210,19 @@ function CreateService() {
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="e.g. Haircut"
+                maxLength={100}
+                required
                 disabled={isLoading}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                aria-invalid={Boolean(errors.name)}
+                aria-describedby={errors.name ? "name-error" : undefined}
+                className={inputClass("name")}
               />
+
+              {errors.name && (
+                <p id="name-error" className="mt-2 text-sm text-red-600">
+                  {errors.name}
+                </p>
+              )}
             </div>
 
             <div>
@@ -180,7 +239,12 @@ function CreateService() {
                 value={formData.category}
                 onChange={handleChange}
                 disabled={isLoading}
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                required
+                aria-invalid={Boolean(errors.category)}
+                aria-describedby={
+                  errors.category ? "category-error" : undefined
+                }
+                className={`${inputClass("category")} bg-white`}
               >
                 {SERVICE_CATEGORIES.map((categoryOption) => (
                   <option key={categoryOption} value={categoryOption}>
@@ -188,6 +252,12 @@ function CreateService() {
                   </option>
                 ))}
               </select>
+
+              {errors.category && (
+                <p id="category-error" className="mt-2 text-sm text-red-600">
+                  {errors.category}
+                </p>
+              )}
             </div>
 
             <div>
@@ -201,13 +271,38 @@ function CreateService() {
               <textarea
                 id="description"
                 name="description"
-                rows="5"
+                rows={5}
                 value={formData.description}
                 onChange={handleChange}
                 placeholder="Describe what customers can expect from this service."
+                maxLength={1000}
+                required
                 disabled={isLoading}
-                className="w-full resize-y rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                aria-invalid={Boolean(errors.description)}
+                aria-describedby={
+                  errors.description ? "description-error" : "description-count"
+                }
+                className={`${inputClass("description")} resize-y`}
               />
+
+              <div className="mt-2 flex justify-between gap-3">
+                {errors.description ? (
+                  <p id="description-error" className="text-sm text-red-600">
+                    {errors.description}
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    At least 10 characters.
+                  </p>
+                )}
+
+                <p
+                  id="description-count"
+                  className="shrink-0 text-sm text-slate-500"
+                >
+                  {formData.description.length}/1000
+                </p>
+              </div>
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2">
@@ -228,9 +323,20 @@ function CreateService() {
                   value={formData.duration}
                   onChange={handleChange}
                   placeholder="60"
+                  required
                   disabled={isLoading}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                  aria-invalid={Boolean(errors.duration)}
+                  aria-describedby={
+                    errors.duration ? "duration-error" : undefined
+                  }
+                  className={inputClass("duration")}
                 />
+
+                {errors.duration && (
+                  <p id="duration-error" className="mt-2 text-sm text-red-600">
+                    {errors.duration}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -250,16 +356,28 @@ function CreateService() {
                   value={formData.price}
                   onChange={handleChange}
                   placeholder="25.00"
+                  required
                   disabled={isLoading}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                  aria-invalid={Boolean(errors.price)}
+                  aria-describedby={errors.price ? "price-error" : undefined}
+                  className={inputClass("price")}
                 />
+
+                {errors.price && (
+                  <p id="price-error" className="mt-2 text-sm text-red-600">
+                    {errors.price}
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
               <Link
                 to="/owner/services"
-                className="rounded-lg border border-slate-300 px-5 py-3 text-center font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                aria-disabled={isLoading}
+                className={`rounded-lg border border-slate-300 px-5 py-3 text-center font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 ${
+                  isLoading ? "pointer-events-none opacity-60" : ""
+                }`}
               >
                 Cancel
               </Link>
@@ -273,7 +391,7 @@ function CreateService() {
               </button>
             </div>
           </form>
-        </div>
+        </section>
       </div>
     </main>
   );
