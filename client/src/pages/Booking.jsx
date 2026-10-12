@@ -1,11 +1,36 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getServiceById } from "../services/serviceService";
 import { createBooking, getAvailableSlots } from "../services/bookingService";
 
+function getLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatBookingDate(date) {
+  if (!date) return "";
+
+  const [year, month, day] = date.split("-").map(Number);
+
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 function Booking() {
   const { serviceId } = useParams();
   const navigate = useNavigate();
+
+  const slotsRequestId = useRef(0);
+  const bookingInProgress = useRef(false);
 
   const [service, setService] = useState(null);
   const [date, setDate] = useState("");
@@ -20,18 +45,25 @@ function Booking() {
   const [slotsError, setSlotsError] = useState("");
   const [bookingError, setBookingError] = useState("");
 
+  const today = getLocalDateString();
+
   useEffect(() => {
     let isActive = true;
 
-    const fetchService = async () => {
-      try {
-        setIsLoadingService(true);
-        setServiceError("");
+    async function fetchService() {
+      setIsLoadingService(true);
+      setServiceError("");
+      setService(null);
 
+      try {
         const data = await getServiceById(serviceId);
 
         if (isActive) {
-          setService(data.service);
+          if (!data?.service) {
+            setServiceError("This service could not be found.");
+          } else {
+            setService(data.service);
+          }
         }
       } catch (error) {
         if (isActive) {
@@ -45,7 +77,7 @@ function Booking() {
           setIsLoadingService(false);
         }
       }
-    };
+    }
 
     fetchService();
 
@@ -56,10 +88,14 @@ function Booking() {
 
   const loadAvailableSlots = useCallback(
     async ({ preserveBookingError = false } = {}) => {
-      if (!date) {
+      const requestId = ++slotsRequestId.current;
+      const requestedDate = date;
+
+      if (!requestedDate) {
         setAvailableSlots([]);
         setSelectedTime("");
         setSlotsError("");
+        setIsLoadingSlots(false);
 
         if (!preserveBookingError) {
           setBookingError("");
@@ -68,21 +104,41 @@ function Booking() {
         return false;
       }
 
-      try {
-        setIsLoadingSlots(true);
-        setSlotsError("");
+      setIsLoadingSlots(true);
+      setSlotsError("");
 
-        if (!preserveBookingError) {
-          setBookingError("");
+      if (!preserveBookingError) {
+        setBookingError("");
+      }
+
+      try {
+        const data = await getAvailableSlots(serviceId, requestedDate);
+
+        if (requestId !== slotsRequestId.current) {
+          return false;
         }
 
-        const data = await getAvailableSlots(serviceId, date);
-        setAvailableSlots(data.slots || []);
+        const slots = Array.isArray(data?.slots) ? data.slots : [];
+        setAvailableSlots(slots);
+
+        // Clear the selection if the selected slot is no longer available.
+        setSelectedTime((currentTime) => {
+          const stillAvailable = slots.some(
+            (slot) =>
+              slot.startTime === currentTime && slot.available !== false,
+          );
+
+          return stillAvailable ? currentTime : "";
+        });
 
         return true;
       } catch (error) {
-        setAvailableSlots([]);
+        if (requestId !== slotsRequestId.current) {
+          return false;
+        }
 
+        setAvailableSlots([]);
+        setSelectedTime("");
         setSlotsError(
           error.response?.data?.message ||
             "Unable to load available times. Please try again.",
@@ -90,97 +146,89 @@ function Booking() {
 
         return false;
       } finally {
-        setIsLoadingSlots(false);
+        if (requestId === slotsRequestId.current) {
+          setIsLoadingSlots(false);
+        }
       }
     },
     [date, serviceId],
   );
 
   useEffect(() => {
-    let isActive = true;
-
-    const fetchAvailableSlots = async () => {
-      if (!date) {
-        setAvailableSlots([]);
-        setSelectedTime("");
-        setSlotsError("");
-        setBookingError("");
-        return;
-      }
-
-      setSelectedTime("");
-
-      try {
-        setIsLoadingSlots(true);
-        setSlotsError("");
-        setBookingError("");
-
-        const data = await getAvailableSlots(serviceId, date);
-
-        if (isActive) {
-          setAvailableSlots(data.slots || []);
-        }
-      } catch (error) {
-        if (isActive) {
-          setAvailableSlots([]);
-
-          setSlotsError(
-            error.response?.data?.message ||
-              "Unable to load available times. Please try again.",
-          );
-        }
-      } finally {
-        if (isActive) {
-          setIsLoadingSlots(false);
-        }
-      }
-    };
-
-    fetchAvailableSlots();
+    loadAvailableSlots();
 
     return () => {
-      isActive = false;
+      // Ignore responses from requests belonging to an older date or page.
+      slotsRequestId.current += 1;
     };
-  }, [serviceId, date]);
+  }, [loadAvailableSlots]);
 
   const handleDateChange = (event) => {
-    setDate(event.target.value);
+    const nextDate = event.target.value;
+
+    setDate(nextDate);
     setSelectedTime("");
-    setBookingError("");
+    setAvailableSlots([]);
     setSlotsError("");
+    setBookingError("");
   };
 
   const handleTimeSelect = (time) => {
+    if (isBooking || isLoadingSlots) return;
+
+    const slotExists = availableSlots.some(
+      (slot) => slot.startTime === time && slot.available !== false,
+    );
+
+    if (!slotExists) return;
+
     setSelectedTime(time);
     setBookingError("");
   };
 
   const handleBooking = async () => {
+    if (bookingInProgress.current) return;
+
     if (!date) {
       setBookingError("Please select a date.");
       return;
     }
 
-    if (!selectedTime) {
+    if (date < getLocalDateString()) {
+      setBookingError("Please select today or a future date.");
+      return;
+    }
+
+    if (isLoadingSlots || slotsError) {
+      setBookingError("Please load the available times before booking.");
+      return;
+    }
+
+    const selectedSlot = availableSlots.find(
+      (slot) => slot.startTime === selectedTime && slot.available !== false,
+    );
+
+    if (!selectedSlot) {
       setBookingError("Please select an available time.");
       return;
     }
 
-    try {
-      setIsBooking(true);
-      setBookingError("");
+    bookingInProgress.current = true;
+    setIsBooking(true);
+    setBookingError("");
 
+    try {
       const result = await createBooking({
         serviceId,
         date,
-        startTime: selectedTime,
+        startTime: selectedSlot.startTime,
       });
 
       const booking = result?.booking;
 
       if (!booking) {
         setBookingError(
-          "Your booking request returned an unexpected response. Please check My Bookings before trying again.",
+          "We couldn't verify the booking response. Check My Bookings before trying again.",
         );
         return;
       }
@@ -192,8 +240,8 @@ function Booking() {
           fallback: {
             service,
             date,
-            startTime: selectedTime,
-            endTime: selectedSlot?.endTime,
+            startTime: selectedSlot.startTime,
+            endTime: selectedSlot.endTime,
           },
         },
       });
@@ -201,7 +249,7 @@ function Booking() {
       if (error.response?.status === 409) {
         setSelectedTime("");
         setBookingError(
-          "Sorry, this time slot was just booked by someone else. We've refreshed the available times. Please choose another time.",
+          "This time slot is no longer available. Choose another available time.",
         );
 
         await loadAvailableSlots({ preserveBookingError: true });
@@ -212,6 +260,7 @@ function Booking() {
         );
       }
     } finally {
+      bookingInProgress.current = false;
       setIsBooking(false);
     }
   };
@@ -220,19 +269,7 @@ function Booking() {
     (slot) => slot.startTime === selectedTime && slot.available !== false,
   );
 
-  const formattedDate = date
-    ? (() => {
-        const [year, month, day] = date.split("-").map(Number);
-        const localDate = new Date(year, month - 1, day);
-
-        return localDate.toLocaleDateString(undefined, {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        });
-      })()
-    : "";
+  const formattedDate = formatBookingDate(date);
 
   if (isLoadingService) {
     return (
@@ -265,14 +302,24 @@ function Booking() {
               Service unavailable
             </h1>
 
-            <p className="mt-2 text-red-700">
-              {serviceError || "This service could not be found."}
-            </p>
+            <p className="mt-2 text-red-700">{serviceError}</p>
+
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-4 rounded-lg bg-red-800 px-4 py-2 font-semibold text-white hover:bg-red-900"
+            >
+              Try again
+            </button>
           </div>
         </div>
       </main>
     );
   }
+
+  const visibleSlots = availableSlots.filter(
+    (slot) => slot.available !== false,
+  );
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
@@ -348,33 +395,32 @@ function Booking() {
                 type="date"
                 value={date}
                 onChange={handleDateChange}
-                min={new Date().toISOString().split("T")[0]}
+                min={today}
                 disabled={isBooking}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                required
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100"
               />
             </div>
 
             {date && (
               <div className="mt-8">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <h3 className="text-lg font-semibold text-slate-900">
                     Available times
                   </h3>
 
                   {!isLoadingSlots && !slotsError && (
                     <span className="text-sm text-slate-500">
-                      {
-                        availableSlots.filter(
-                          (slot) => slot.available !== false,
-                        ).length
-                      }{" "}
-                      available
+                      {visibleSlots.length} available
                     </span>
                   )}
                 </div>
 
                 {isLoadingSlots && (
-                  <div className="mt-4 rounded-xl bg-slate-50 p-6 text-center">
+                  <div
+                    role="status"
+                    className="mt-4 rounded-xl bg-slate-50 p-6 text-center"
+                  >
                     <p className="text-slate-600">Loading available times...</p>
                   </div>
                 )}
@@ -389,7 +435,8 @@ function Booking() {
                     <button
                       type="button"
                       onClick={() => loadAvailableSlots()}
-                      className="mt-3 text-sm font-semibold text-red-800 underline hover:text-red-950"
+                      disabled={isBooking}
+                      className="mt-3 text-sm font-semibold text-red-800 underline hover:text-red-950 disabled:opacity-50"
                     >
                       Try loading times again
                     </button>
@@ -398,8 +445,7 @@ function Booking() {
 
                 {!isLoadingSlots &&
                   !slotsError &&
-                  availableSlots.filter((slot) => slot.available !== false)
-                    .length === 0 && (
+                  visibleSlots.length === 0 && (
                     <div className="mt-4 rounded-xl bg-slate-50 p-6 text-center">
                       <h3 className="font-semibold text-slate-900">
                         No available times
@@ -412,34 +458,30 @@ function Booking() {
                     </div>
                   )}
 
-                {!isLoadingSlots &&
-                  !slotsError &&
-                  availableSlots.some((slot) => slot.available !== false) && (
-                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {availableSlots
-                        .filter((slot) => slot.available !== false)
-                        .map((slot) => {
-                          const isSelected = selectedTime === slot.startTime;
+                {!isLoadingSlots && !slotsError && visibleSlots.length > 0 && (
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {visibleSlots.map((slot) => {
+                      const isSelected = selectedTime === slot.startTime;
 
-                          return (
-                            <button
-                              key={slot.startTime}
-                              type="button"
-                              onClick={() => handleTimeSelect(slot.startTime)}
-                              disabled={isBooking}
-                              aria-pressed={isSelected}
-                              className={`rounded-lg border px-4 py-3 text-sm font-semibold transition ${
-                                isSelected
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:text-slate-900"
-                              } disabled:cursor-not-allowed disabled:opacity-60`}
-                            >
-                              {slot.startTime}
-                            </button>
-                          );
-                        })}
-                    </div>
-                  )}
+                      return (
+                        <button
+                          key={slot.startTime}
+                          type="button"
+                          onClick={() => handleTimeSelect(slot.startTime)}
+                          disabled={isBooking}
+                          aria-pressed={isSelected}
+                          className={`rounded-lg border px-4 py-3 text-sm font-semibold transition ${
+                            isSelected
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:text-slate-900"
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {slot.startTime}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
