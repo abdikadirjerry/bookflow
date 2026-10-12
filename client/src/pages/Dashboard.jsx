@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getOwnerDashboardStats } from "../services/userService";
+import { getOwnerBookings } from "../services/bookingService";
 import { useAuth } from "../context/AuthContext";
 
 const STATUS_CONFIG = [
@@ -29,6 +30,13 @@ const STATUS_CONFIG = [
     background: "bg-red-50",
   },
 ];
+
+const BOOKING_STATUS_STYLES = {
+  pending: "bg-amber-50 text-amber-700 ring-amber-200",
+  confirmed: "bg-blue-50 text-blue-700 ring-blue-200",
+  completed: "bg-green-50 text-green-700 ring-green-200",
+  cancelled: "bg-red-50 text-red-700 ring-red-200",
+};
 
 function toNumber(value) {
   if (value === null || value === undefined || value === "") return 0;
@@ -71,6 +79,77 @@ function getStatsFromResponse(response) {
   return candidate;
 }
 
+function getBookingsFromResponse(response) {
+  const candidate =
+    response?.bookings ??
+    response?.data?.bookings ??
+    response?.data?.data?.bookings;
+
+  if (!Array.isArray(candidate)) {
+    throw new Error("The bookings response has an unexpected format.");
+  }
+
+  return candidate;
+}
+
+function formatBookingDate(date) {
+  if (typeof date !== "string" || !date.trim()) return "Date unavailable";
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+
+  if (match) {
+    const [, year, month, day] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+
+    if (
+      parsed.getFullYear() !== Number(year) ||
+      parsed.getMonth() !== Number(month) - 1 ||
+      parsed.getDate() !== Number(day)
+    ) {
+      return "Invalid date";
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(parsed);
+  }
+
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) return "Invalid date";
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function formatBookingTime(time) {
+  if (typeof time !== "string") return "Time unavailable";
+
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+
+  if (!match) return time || "Time unavailable";
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const date = new Date(2000, 0, 1, hours, minutes);
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatStatus(status) {
+  if (typeof status !== "string" || !status.trim()) return "Unknown";
+
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+}
+
 function Dashboard() {
   const { user } = useAuth();
 
@@ -79,9 +158,14 @@ function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
 
+  const [recentBookings, setRecentBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState("");
+
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
   const hasStatsRef = useRef(false);
+  const bookingsRequestIdRef = useRef(0);
 
   const fetchDashboardStats = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -123,15 +207,62 @@ function Dashboard() {
     }
   }, []);
 
+  const fetchRecentBookings = useCallback(async () => {
+    const requestId = ++bookingsRequestIdRef.current;
+
+    setBookingsLoading(true);
+    setBookingsError("");
+
+    try {
+      const response = await getOwnerBookings();
+      const bookings = getBookingsFromResponse(response);
+
+      if (!mountedRef.current || requestId !== bookingsRequestIdRef.current) {
+        return;
+      }
+
+      const sortedBookings = [...bookings].sort((a, b) => {
+        const dateA = `${a?.date || ""}T${a?.startTime || "00:00"}`;
+        const dateB = `${b?.date || ""}T${b?.startTime || "00:00"}`;
+
+        return dateB.localeCompare(dateA);
+      });
+
+      setRecentBookings(sortedBookings.slice(0, 5));
+    } catch (requestError) {
+      if (!mountedRef.current || requestId !== bookingsRequestIdRef.current) {
+        return;
+      }
+
+      setBookingsError(
+        requestError.response?.data?.message ||
+          requestError.message ||
+          "Unable to load recent bookings. Please try again.",
+      );
+    } finally {
+      if (mountedRef.current && requestId === bookingsRequestIdRef.current) {
+        setBookingsLoading(false);
+      }
+    }
+  }, []);
+
+  const refreshDashboard = useCallback(() => {
+    fetchDashboardStats();
+    fetchRecentBookings();
+  }, [fetchDashboardStats, fetchRecentBookings]);
+
   useEffect(() => {
     mountedRef.current = true;
+
     fetchDashboardStats();
+    fetchRecentBookings();
 
     return () => {
       mountedRef.current = false;
       requestIdRef.current += 1;
+      bookingsRequestIdRef.current += 1;
     };
-  }, [fetchDashboardStats]);
+  }, [fetchDashboardStats, fetchRecentBookings]);
 
   const statCards = useMemo(
     () => [
@@ -214,11 +345,13 @@ function Dashboard() {
 
           <button
             type="button"
-            onClick={fetchDashboardStats}
-            disabled={isRefreshing || isLoading}
+            onClick={refreshDashboard}
+            disabled={isRefreshing || isLoading || bookingsLoading}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isRefreshing || isLoading ? "Refreshing..." : "Refresh dashboard"}
+            {isRefreshing || isLoading || bookingsLoading
+              ? "Refreshing..."
+              : "Refresh dashboard"}
           </button>
         </header>
 
@@ -375,6 +508,167 @@ function Dashboard() {
                 </div>
               </section>
             )}
+
+            <section className="mt-10">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Recent bookings
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Your five most recent appointments.
+                  </p>
+                </div>
+
+                <Link
+                  to="/owner/bookings"
+                  className="text-sm font-semibold text-blue-700 hover:text-blue-900"
+                >
+                  View all bookings →
+                </Link>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                {bookingsLoading ? (
+                  <div role="status" className="p-8 text-center">
+                    <p className="font-medium text-slate-800">
+                      Loading recent bookings...
+                    </p>
+                  </div>
+                ) : bookingsError ? (
+                  <div className="p-6" role="alert">
+                    <p className="font-semibold text-red-800">
+                      Could not load recent bookings
+                    </p>
+                    <p className="mt-2 text-sm text-red-700">{bookingsError}</p>
+                    <button
+                      type="button"
+                      onClick={fetchRecentBookings}
+                      className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : recentBookings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <h3 className="font-semibold text-slate-900">
+                      No bookings yet
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-600">
+                      New customer appointments will appear here.
+                    </p>
+                    <Link
+                      to="/owner/services"
+                      className="mt-4 inline-block text-sm font-semibold text-blue-700 hover:text-blue-900"
+                    >
+                      Manage your services →
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <div className="divide-y divide-slate-100 md:hidden">
+                      {recentBookings.map((booking) => (
+                        <article key={booking._id} className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h3 className="truncate font-semibold text-slate-900">
+                                {booking.customer?.name || "Customer"}
+                              </h3>
+                              <p className="mt-1 truncate text-sm text-slate-600">
+                                {booking.service?.name || "Service unavailable"}
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                BOOKING_STATUS_STYLES[booking.status] ||
+                                "bg-slate-100 text-slate-700 ring-slate-200"
+                              }`}
+                            >
+                              {formatStatus(booking.status)}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm text-slate-600">
+                            {formatBookingDate(booking.date)} ·{" "}
+                            {formatBookingTime(booking.startTime)}
+                          </p>
+                          <Link
+                            to={`/bookings/${booking._id}`}
+                            className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:text-blue-900"
+                          >
+                            View booking →
+                          </Link>
+                        </article>
+                      ))}
+                    </div>
+
+                    <div className="hidden overflow-x-auto md:block">
+                      <table className="min-w-full divide-y divide-slate-200 text-left">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Customer
+                            </th>
+                            <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Service
+                            </th>
+                            <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Date & time
+                            </th>
+                            <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Status
+                            </th>
+                            <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {recentBookings.map((booking) => (
+                            <tr key={booking._id} className="hover:bg-slate-50">
+                              <td className="whitespace-nowrap px-6 py-4">
+                                <p className="font-semibold text-slate-900">
+                                  {booking.customer?.name || "Customer"}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {booking.customer?.email || ""}
+                                </p>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-slate-700">
+                                {booking.service?.name || "Service unavailable"}
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
+                                <p>{formatBookingDate(booking.date)}</p>
+                                <p className="mt-1 text-slate-500">
+                                  {formatBookingTime(booking.startTime)}
+                                </p>
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4">
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                    BOOKING_STATUS_STYLES[booking.status] ||
+                                    "bg-slate-100 text-slate-700 ring-slate-200"
+                                  }`}
+                                >
+                                  {formatStatus(booking.status)}
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4">
+                                <Link
+                                  to={`/bookings/${booking._id}`}
+                                  className="text-sm font-semibold text-blue-700 hover:text-blue-900"
+                                >
+                                  View details →
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
 
             <section className="mt-10">
               <h2 className="text-xl font-bold text-slate-900">
