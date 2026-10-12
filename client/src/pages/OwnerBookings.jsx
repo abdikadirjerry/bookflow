@@ -20,6 +20,128 @@ const ALLOWED_TRANSITIONS = {
   cancelled: [],
 };
 
+function getBookingId(booking) {
+  const id = booking?._id ?? booking?.id;
+  return id == null ? "" : String(id);
+}
+
+function getBookingsFromResponse(data) {
+  const bookings = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.bookings)
+      ? data.bookings
+      : Array.isArray(data?.data?.bookings)
+        ? data.data.bookings
+        : Array.isArray(data?.data)
+          ? data.data
+          : null;
+
+  if (
+    !bookings ||
+    !bookings.every((booking) => booking && typeof booking === "object")
+  ) {
+    throw new Error("The server returned an invalid bookings response.");
+  }
+
+  return bookings;
+}
+
+function getDateTimestamp(booking) {
+  if (!booking?.date) return 0;
+
+  const dateValue = String(booking.date);
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+
+  const date = dateMatch
+    ? new Date(
+        Number(dateMatch[1]),
+        Number(dateMatch[2]) - 1,
+        Number(dateMatch[3]),
+      )
+    : new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) return 0;
+
+  const timeMatch = /^(\d{1,2}):(\d{2})/.exec(String(booking.startTime || ""));
+
+  if (timeMatch && Number(timeMatch[1]) <= 23 && Number(timeMatch[2]) <= 59) {
+    date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+  }
+
+  return date.getTime();
+}
+
+function formatDate(value) {
+  if (!value) return "Not specified";
+
+  const dateValue = String(value);
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+
+  const date = dateMatch
+    ? new Date(
+        Number(dateMatch[1]),
+        Number(dateMatch[2]) - 1,
+        Number(dateMatch[3]),
+      )
+    : new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) return dateValue;
+
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatTime(value) {
+  if (!value) return "—";
+
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(value));
+
+  if (!match) return String(value);
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (hours > 23 || minutes > 59) return String(value);
+
+  return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatPrice(value) {
+  if (value == null || value === "") return "Not available";
+
+  const price = Number(value);
+
+  if (!Number.isFinite(price) || price < 0) return "Not available";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(price);
+}
+
+function getStatusClasses(status) {
+  const classes = {
+    pending: "bg-yellow-50 text-yellow-700",
+    confirmed: "bg-blue-50 text-blue-700",
+    completed: "bg-green-50 text-green-700",
+    cancelled: "bg-red-50 text-red-700",
+  };
+
+  return classes[status] || "bg-slate-100 text-slate-700";
+}
+
+function formatStatus(status) {
+  if (!status) return "Unknown";
+
+  return String(status).charAt(0).toUpperCase() + String(status).slice(1);
+}
+
 function OwnerBookings() {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,27 +152,50 @@ function OwnerBookings() {
   const [sortOrder, setSortOrder] = useState("newest");
   const [updatingBookingIds, setUpdatingBookingIds] = useState([]);
 
+  const mountedRef = useRef(false);
+  const fetchRequestIdRef = useRef(0);
   const updatingIdsRef = useRef(new Set());
 
   const fetchBookings = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError("");
+    const requestId = ++fetchRequestIdRef.current;
 
+    setIsLoading(true);
+    setError("");
+
+    try {
       const data = await getOwnerBookings();
-      setBookings(data.bookings || []);
-    } catch (error) {
+      const nextBookings = getBookingsFromResponse(data);
+
+      if (!mountedRef.current || requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
+      setBookings(nextBookings);
+    } catch (err) {
+      if (!mountedRef.current || requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
       setError(
-        error.response?.data?.message ||
+        err?.response?.data?.message ||
+          err?.message ||
           "Unable to load bookings. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current && requestId === fetchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     fetchBookings();
+
+    return () => {
+      mountedRef.current = false;
+      fetchRequestIdRef.current += 1;
+    };
   }, [fetchBookings]);
 
   const statusCounts = useMemo(() => {
@@ -85,7 +230,7 @@ function OwnerBookings() {
         booking.date,
         booking.startTime,
         booking.endTime,
-        booking._id,
+        getBookingId(booking),
       ]
         .filter(Boolean)
         .join(" ")
@@ -97,38 +242,8 @@ function OwnerBookings() {
       );
     });
 
-    const getTimestamp = (booking) => {
-      const date = booking.date;
-
-      if (!date) {
-        return 0;
-      }
-
-      const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-
-      const parsedDate = dateOnlyMatch
-        ? new Date(
-            Number(dateOnlyMatch[1]),
-            Number(dateOnlyMatch[2]) - 1,
-            Number(dateOnlyMatch[3]),
-          )
-        : new Date(date);
-
-      if (Number.isNaN(parsedDate.getTime())) {
-        return 0;
-      }
-
-      const timeMatch = /^(\d{1,2}):(\d{2})/.exec(booking.startTime || "");
-
-      if (timeMatch) {
-        parsedDate.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
-      }
-
-      return parsedDate.getTime();
-    };
-
     result.sort((a, b) => {
-      const difference = getTimestamp(a) - getTimestamp(b);
+      const difference = getDateTimestamp(a) - getDateTimestamp(b);
       return sortOrder === "newest" ? -difference : difference;
     });
 
@@ -136,11 +251,11 @@ function OwnerBookings() {
   }, [bookings, search, statusFilter, sortOrder]);
 
   const handleStatusUpdate = async (bookingId, nextStatus) => {
-    if (updatingIdsRef.current.has(bookingId)) {
-      return;
-    }
+    const id = String(bookingId || "");
 
-    const booking = bookings.find((item) => item._id === bookingId);
+    if (!id || updatingIdsRef.current.has(id)) return;
+
+    const booking = bookings.find((item) => getBookingId(item) === id);
 
     if (!booking) {
       setActionError("Booking not found. Refresh and try again.");
@@ -159,86 +274,79 @@ function OwnerBookings() {
         "Are you sure you want to cancel this booking?",
       );
 
-      if (!confirmed) {
-        return;
-      }
+      if (!confirmed) return;
     }
 
-    updatingIdsRef.current.add(bookingId);
-    setUpdatingBookingIds((current) => [...current, bookingId]);
+    updatingIdsRef.current.add(id);
+    setUpdatingBookingIds((current) => [...current, id]);
     setActionError("");
 
     try {
-      const data = await updateBookingStatus(bookingId, nextStatus);
+      const data = await updateBookingStatus(id, nextStatus);
+      const updatedBooking = data?.booking ?? data?.data?.booking;
 
-      if (!data.booking) {
+      if (!updatedBooking || typeof updatedBooking !== "object") {
         throw new Error("The server did not return the updated booking.");
       }
 
+      const updatedId = getBookingId(updatedBooking);
+
+      if (updatedId && updatedId !== id) {
+        throw new Error("The server returned an unexpected booking.");
+      }
+
+      if (!mountedRef.current) return;
+
       setBookings((current) =>
-        current.map((item) => (item._id === bookingId ? data.booking : item)),
+        current.map((item) =>
+          getBookingId(item) === id
+            ? { ...item, ...updatedBooking, _id: id }
+            : item,
+        ),
       );
 
       window.dispatchEvent(new Event("bookflow:notifications-updated"));
-    } catch (error) {
+    } catch (err) {
+      if (!mountedRef.current) return;
+
       setActionError(
-        error.response?.data?.message ||
-          error.message ||
+        err?.response?.data?.message ||
+          err?.message ||
           "Unable to update the booking. Please try again.",
       );
 
+      // Refresh server state after a failed update. Keep the original error
+      // visible if this recovery request also fails.
+      const recoveryRequestId = ++fetchRequestIdRef.current;
+
       try {
         const data = await getOwnerBookings();
-        setBookings(data.bookings || []);
+        const latestBookings = getBookingsFromResponse(data);
+
+        if (
+          mountedRef.current &&
+          recoveryRequestId === fetchRequestIdRef.current
+        ) {
+          setBookings(latestBookings);
+        }
       } catch {
-        // Preserve the original status-update error.
+        // Keep the original status-update error.
       }
     } finally {
-      updatingIdsRef.current.delete(bookingId);
-      setUpdatingBookingIds((current) =>
-        current.filter((id) => id !== bookingId),
-      );
+      updatingIdsRef.current.delete(id);
+
+      if (mountedRef.current) {
+        setUpdatingBookingIds((current) =>
+          current.filter((itemId) => itemId !== id),
+        );
+      }
     }
   };
 
-  const getStatusClasses = (status) => {
-    const classes = {
-      pending: "bg-yellow-50 text-yellow-700",
-      confirmed: "bg-blue-50 text-blue-700",
-      completed: "bg-green-50 text-green-700",
-      cancelled: "bg-red-50 text-red-700",
-    };
-
-    return classes[status] || "bg-slate-100 text-slate-700";
-  };
-
-  const formatStatus = (status) => {
-    if (!status) return "Unknown";
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "Not specified";
-
-    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-
-    const parsedDate = dateOnlyMatch
-      ? new Date(
-          Number(dateOnlyMatch[1]),
-          Number(dateOnlyMatch[2]) - 1,
-          Number(dateOnlyMatch[3]),
-        )
-      : new Date(date);
-
-    if (Number.isNaN(parsedDate.getTime())) {
-      return date;
-    }
-
-    return parsedDate.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setSortOrder("newest");
   };
 
   return (
@@ -256,11 +364,9 @@ function OwnerBookings() {
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Business management
             </p>
-
             <h1 className="mt-2 text-3xl font-bold text-slate-900 sm:text-4xl">
               Bookings
             </h1>
-
             <p className="mt-3 max-w-2xl text-slate-600">
               Search, filter, and manage appointments booked for your services.
             </p>
@@ -279,7 +385,7 @@ function OwnerBookings() {
                   type="button"
                   onClick={() => setStatusFilter(option.value)}
                   aria-pressed={statusFilter === option.value}
-                  className={`rounded-xl border bg-white p-4 text-left transition hover:border-slate-400 ${
+                  className={`rounded-xl border bg-white p-4 text-left transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 ${
                     statusFilter === option.value
                       ? "border-slate-900 ring-1 ring-slate-900"
                       : "border-slate-200"
@@ -298,7 +404,7 @@ function OwnerBookings() {
               className="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:p-5"
             >
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="md:col-span-1">
+                <div>
                   <label
                     htmlFor="booking-search"
                     className="mb-2 block text-sm font-semibold text-slate-700"
@@ -364,11 +470,7 @@ function OwnerBookings() {
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSearch("");
-                      setStatusFilter("all");
-                      setSortOrder("newest");
-                    }}
+                    onClick={clearFilters}
                     disabled={
                       !search &&
                       statusFilter === "all" &&
@@ -382,10 +484,10 @@ function OwnerBookings() {
                   <button
                     type="button"
                     onClick={fetchBookings}
-                    disabled={updatingBookingIds.length > 0}
+                    disabled={updatingBookingIds.length > 0 || isLoading}
                     className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Refresh bookings
+                    {isLoading ? "Refreshing..." : "Refresh bookings"}
                   </button>
                 </div>
               </div>
@@ -396,6 +498,7 @@ function OwnerBookings() {
         {isLoading && (
           <div
             role="status"
+            aria-live="polite"
             className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
           >
             <p className="text-slate-600">Loading bookings...</p>
@@ -452,11 +555,7 @@ function OwnerBookings() {
             {bookings.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearch("");
-                  setStatusFilter("all");
-                  setSortOrder("newest");
-                }}
+                onClick={clearFilters}
                 className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
               >
                 Clear filters
@@ -468,13 +567,13 @@ function OwnerBookings() {
         {!isLoading && !error && filteredBookings.length > 0 && (
           <div className="space-y-5">
             {filteredBookings.map((booking) => {
-              const isUpdating = updatingBookingIds.includes(booking._id);
-              const canManage =
-                booking.status === "pending" || booking.status === "confirmed";
+              const bookingId = getBookingId(booking);
+              const isUpdating = updatingBookingIds.includes(bookingId);
+              const canManage = ALLOWED_TRANSITIONS[booking.status]?.length > 0;
 
               return (
                 <article
-                  key={booking._id}
+                  key={bookingId || `${booking.service?.name}-${booking.date}`}
                   className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
                 >
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -515,15 +614,17 @@ function OwnerBookings() {
                         <div>
                           <p className="text-sm text-slate-500">Time</p>
                           <p className="mt-1 font-semibold text-slate-900">
-                            {booking.startTime || "—"} -{" "}
-                            {booking.endTime || "—"}
+                            {formatTime(booking.startTime)} –{" "}
+                            {formatTime(booking.endTime)}
                           </p>
                         </div>
 
                         <div>
                           <p className="text-sm text-slate-500">Price</p>
                           <p className="mt-1 font-semibold text-slate-900">
-                            ${booking.service?.price ?? 0}
+                            {formatPrice(
+                              booking.service?.price ?? booking.price,
+                            )}
                           </p>
                         </div>
                       </div>
@@ -536,9 +637,9 @@ function OwnerBookings() {
                         <button
                           type="button"
                           onClick={() =>
-                            handleStatusUpdate(booking._id, "confirmed")
+                            handleStatusUpdate(bookingId, "confirmed")
                           }
-                          disabled={isUpdating}
+                          disabled={isUpdating || !bookingId}
                           className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isUpdating ? "Updating..." : "Confirm booking"}
@@ -549,9 +650,9 @@ function OwnerBookings() {
                         <button
                           type="button"
                           onClick={() =>
-                            handleStatusUpdate(booking._id, "completed")
+                            handleStatusUpdate(bookingId, "completed")
                           }
-                          disabled={isUpdating}
+                          disabled={isUpdating || !bookingId}
                           className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isUpdating ? "Updating..." : "Mark completed"}
@@ -561,9 +662,9 @@ function OwnerBookings() {
                       <button
                         type="button"
                         onClick={() =>
-                          handleStatusUpdate(booking._id, "cancelled")
+                          handleStatusUpdate(bookingId, "cancelled")
                         }
-                        disabled={isUpdating}
+                        disabled={isUpdating || !bookingId}
                         className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isUpdating ? "Updating..." : "Cancel booking"}
