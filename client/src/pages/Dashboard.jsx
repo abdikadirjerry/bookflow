@@ -1,117 +1,203 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getOwnerDashboardStats } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
+
+const STATUS_CONFIG = [
+  {
+    key: "pendingBookings",
+    label: "Pending",
+    color: "text-amber-700",
+    background: "bg-amber-50",
+  },
+  {
+    key: "confirmedBookings",
+    label: "Confirmed",
+    color: "text-blue-700",
+    background: "bg-blue-50",
+  },
+  {
+    key: "completedBookings",
+    label: "Completed",
+    color: "text-green-700",
+    background: "bg-green-50",
+  },
+  {
+    key: "cancelledBookings",
+    label: "Cancelled",
+    color: "text-red-700",
+    background: "bg-red-50",
+  },
+];
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return 0;
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat().format(toNumber(value));
+}
+
+function formatPercent(value) {
+  return `${toNumber(value).toFixed(1)}%`;
+}
+
+function formatCurrency(value, currency = "USD") {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency:
+        typeof currency === "string" && currency.trim()
+          ? currency.trim().toUpperCase()
+          : "USD",
+      maximumFractionDigits: 2,
+    }).format(toNumber(value));
+  } catch {
+    return formatNumber(value);
+  }
+}
+
+function getStatsFromResponse(response) {
+  const candidate =
+    response?.stats ?? response?.data?.stats ?? response?.data ?? response;
+
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new Error("The dashboard returned an unexpected response.");
+  }
+
+  return candidate;
+}
 
 function Dashboard() {
   const { user } = useAuth();
 
   const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchDashboardStats = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError("");
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(false);
+  const hasStatsRef = useRef(false);
 
-      const data = await getOwnerDashboardStats();
-      setStats(data.stats || {});
-    } catch (error) {
+  const fetchDashboardStats = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const hasExistingStats = hasStatsRef.current;
+
+    if (hasExistingStats) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    setError("");
+
+    try {
+      const response = await getOwnerDashboardStats();
+      const nextStats = getStatsFromResponse(response);
+
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
+
+      setStats(nextStats);
+      hasStatsRef.current = true;
+    } catch (requestError) {
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
+
       setError(
-        error.response?.data?.message ||
+        requestError.response?.data?.message ||
+          requestError.message ||
           "Unable to load dashboard statistics. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current && requestId === requestIdRef.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     fetchDashboardStats();
+
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
   }, [fetchDashboardStats]);
 
   const statCards = useMemo(
     () => [
       {
         label: "Services",
-        value: stats?.totalServices ?? 0,
+        value: stats?.activeServices,
         description: "Active services",
       },
       {
         label: "Bookings",
-        value: stats?.totalBookings ?? 0,
+        value: stats?.totalBookings,
         description: "Total bookings",
       },
       {
         label: "Customers",
-        value: stats?.totalCustomers ?? 0,
+        value: stats?.totalCustomers,
         description: "Customers served",
       },
       {
         label: "Upcoming",
-        value: stats?.upcomingBookings ?? 0,
+        value: stats?.upcomingBookings,
         description: "Upcoming appointments",
       },
     ],
     [stats],
   );
 
-  const formatNumber = (value) =>
-    new Intl.NumberFormat().format(Number(value) || 0);
-
-  const formatPercent = (value) => `${(Number(value) || 0).toFixed(1)}%`;
-
-  // These values are displayed only if the existing API returns them.
-  const completedBookings = Number(stats?.completedBookings ?? 0);
-  const pendingBookings = Number(stats?.pendingBookings ?? 0);
-  const confirmedBookings = Number(stats?.confirmedBookings ?? 0);
-  const cancelledBookings = Number(stats?.cancelledBookings ?? 0);
-  const totalBookings = Number(stats?.totalBookings ?? 0);
+  const totalBookings = toNumber(stats?.totalBookings);
+  const completedBookings = toNumber(stats?.completedBookings);
 
   const completionRate =
-    totalBookings > 0 ? (completedBookings / totalBookings) * 100 : 0;
+    totalBookings > 0
+      ? Math.min(100, Math.max(0, (completedBookings / totalBookings) * 100))
+      : 0;
 
-  const hasStatusStats = [
-    "pendingBookings",
-    "confirmedBookings",
-    "completedBookings",
-    "cancelledBookings",
-  ].some((key) => stats?.[key] !== undefined);
+  const hasStatusStats = STATUS_CONFIG.some(
+    ({ key }) => stats?.[key] !== undefined && stats?.[key] !== null,
+  );
 
-  const hasRevenueStats = stats?.totalRevenue !== undefined;
+  const hasRevenueStats =
+    stats?.totalRevenue !== undefined &&
+    stats?.totalRevenue !== null &&
+    Number.isFinite(Number(stats.totalRevenue));
 
-  const statusCards = [
-    {
-      label: "Pending",
-      value: pendingBookings,
-      color: "text-amber-700",
-      background: "bg-amber-50",
-    },
-    {
-      label: "Confirmed",
-      value: confirmedBookings,
-      color: "text-blue-700",
-      background: "bg-blue-50",
-    },
-    {
-      label: "Completed",
-      value: completedBookings,
-      color: "text-green-700",
-      background: "bg-green-50",
-    },
-    {
-      label: "Cancelled",
-      value: cancelledBookings,
-      color: "text-red-700",
-      background: "bg-red-50",
-    },
-  ];
+  if (isLoading && !stats) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-10">
+        <div className="mx-auto max-w-6xl">
+          <div
+            role="status"
+            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
+          >
+            <p className="font-medium text-slate-800">Loading dashboard...</p>
+            <p className="mt-2 text-sm text-slate-500">
+              Please wait while we load your business statistics.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               BookFlow
@@ -129,29 +215,20 @@ function Dashboard() {
           <button
             type="button"
             onClick={fetchDashboardStats}
-            disabled={isLoading}
+            disabled={isRefreshing || isLoading}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isLoading ? "Refreshing..." : "Refresh dashboard"}
+            {isRefreshing || isLoading ? "Refreshing..." : "Refresh dashboard"}
           </button>
-        </div>
+        </header>
 
-        {isLoading && (
-          <div
-            role="status"
-            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <p className="text-slate-600">Loading dashboard...</p>
-          </div>
-        )}
-
-        {!isLoading && error && (
+        {error && (
           <div
             role="alert"
-            className="rounded-2xl bg-red-50 p-6 ring-1 ring-red-100"
+            className="mb-6 rounded-2xl bg-red-50 p-5 ring-1 ring-red-100"
           >
             <h2 className="font-semibold text-red-800">
-              Dashboard unavailable
+              {stats ? "Dashboard refresh failed" : "Dashboard unavailable"}
             </h2>
 
             <p className="mt-2 text-sm text-red-700">{error}</p>
@@ -159,15 +236,28 @@ function Dashboard() {
             <button
               type="button"
               onClick={fetchDashboardStats}
-              className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
+              disabled={isRefreshing || isLoading}
+              className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
             >
               Try again
             </button>
+
+            {stats && (
+              <p className="mt-3 text-sm text-red-700">
+                Your previously loaded statistics are still displayed.
+              </p>
+            )}
           </div>
         )}
 
-        {!isLoading && !error && stats && (
+        {stats && (
           <>
+            {isRefreshing && (
+              <p role="status" className="mb-4 text-sm text-slate-500">
+                Updating dashboard statistics...
+              </p>
+            )}
+
             <section aria-label="Dashboard statistics">
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 {statCards.map((stat) => (
@@ -203,9 +293,9 @@ function Dashboard() {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {statusCards.map((card) => (
+                  {STATUS_CONFIG.map((card) => (
                     <article
-                      key={card.label}
+                      key={card.key}
                       className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -220,7 +310,7 @@ function Dashboard() {
                       </div>
 
                       <p className="mt-4 text-3xl font-bold text-slate-900">
-                        {formatNumber(card.value)}
+                        {formatNumber(stats[card.key])}
                       </p>
                     </article>
                   ))}
@@ -242,11 +332,7 @@ function Dashboard() {
                       </p>
 
                       <p className="mt-2 text-3xl font-bold text-slate-900">
-                        {new Intl.NumberFormat(undefined, {
-                          style: "currency",
-                          currency: stats.currency || "USD",
-                          maximumFractionDigits: 2,
-                        }).format(Number(stats.totalRevenue) || 0)}
+                        {formatCurrency(stats.totalRevenue, stats.currency)}
                       </p>
 
                       <p className="mt-2 text-sm text-slate-500">
@@ -272,19 +358,11 @@ function Dashboard() {
                         aria-label="Booking completion rate"
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuenow={Math.min(
-                          100,
-                          Math.max(0, completionRate),
-                        )}
+                        aria-valuenow={completionRate}
                       >
                         <div
                           className="h-full rounded-full bg-green-500 transition-all"
-                          style={{
-                            width: `${Math.min(
-                              100,
-                              Math.max(0, completionRate),
-                            )}%`,
-                          }}
+                          style={{ width: `${completionRate}%` }}
                         />
                       </div>
 
