@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { cancelBooking, getMyBookings } from "../services/bookingService";
 import {
@@ -21,129 +21,148 @@ const SORT_OPTIONS = [
   { value: "oldest", label: "Oldest first" },
 ];
 
+function getBookingId(booking) {
+  const id = booking?._id || booking?.id;
+  return id == null ? "" : String(id);
+}
+
+function getBookingReference(booking) {
+  const id = getBookingId(booking);
+  return id ? id.slice(-8).toUpperCase() : null;
+}
+
+function getAppointmentTimestamp(booking) {
+  if (!booking?.date || !booking?.startTime) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(booking.date);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(booking.startTime);
+
+  if (!dateMatch || !timeMatch) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const [, year, month, day] = dateMatch.map(Number);
+  const [, hours, minutes] = timeMatch.map(Number);
+
+  const timestamp = new Date(year, month - 1, day, hours, minutes).getTime();
+
+  return Number.isNaN(timestamp) ? Number.POSITIVE_INFINITY : timestamp;
+}
+
+function getCreationTimestamp(booking) {
+  if (!booking?.createdAt) return 0;
+
+  const timestamp = new Date(booking.createdAt).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getStatusClasses(status) {
+  const classes = {
+    pending: "bg-yellow-50 text-yellow-700 ring-yellow-200",
+    confirmed: "bg-green-50 text-green-700 ring-green-200",
+    completed: "bg-blue-50 text-blue-700 ring-blue-200",
+    cancelled: "bg-red-50 text-red-700 ring-red-200",
+  };
+
+  return (
+    classes[status?.toLowerCase()] ||
+    "bg-slate-50 text-slate-700 ring-slate-200"
+  );
+}
+
+function formatStatus(status) {
+  if (!status) return "Unknown";
+
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [sortBy, setSortBy] = useState("upcoming");
   const [searchQuery, setSearchQuery] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
-  const [isCancellingAnyBooking, setIsCancellingAnyBooking] = useState(false);
   const [cancelError, setCancelError] = useState("");
-  const [copiedBookingId, setCopiedBookingId] = useState(null);
-  const [copyError, setCopyError] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
+  const [copyingBookingId, setCopyingBookingId] = useState(null);
+
+  const mountedRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const cancelInProgressRef = useRef(false);
+  const copyInProgressRef = useRef(false);
 
   const loadBookings = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError("");
+    const requestId = ++requestIdRef.current;
 
+    setIsLoading(true);
+    setError("");
+
+    try {
       const data = await getMyBookings();
-      setBookings(data.bookings || []);
+
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
+
+      if (!Array.isArray(data?.bookings)) {
+        throw new Error("The server returned an unexpected bookings response.");
+      }
+
+      setBookings(data.bookings);
     } catch (error) {
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
+
       setError(
         error.response?.data?.message ||
+          error.message ||
           "Unable to load your bookings. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current && requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadBookings();
+
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
   }, [loadBookings]);
 
-  const getStatusClasses = (status) => {
-    const statusClasses = {
-      pending: "bg-yellow-50 text-yellow-700 ring-yellow-200",
-      confirmed: "bg-green-50 text-green-700 ring-green-200",
-      completed: "bg-blue-50 text-blue-700 ring-blue-200",
-      cancelled: "bg-red-50 text-red-700 ring-red-200",
+  const bookingCounts = useMemo(() => {
+    const counts = {
+      all: bookings.length,
+      pending: 0,
+      confirmed: 0,
+      completed: 0,
+      cancelled: 0,
     };
 
-    return statusClasses[status] || "bg-slate-50 text-slate-700 ring-slate-200";
-  };
+    bookings.forEach((booking) => {
+      const status = booking.status?.toLowerCase();
 
-  const formatStatus = (status) => {
-    if (!status) {
-      return "Unknown";
-    }
-
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  const getBookingReference = (booking) => {
-    const bookingId = booking._id || booking.id;
-
-    return bookingId ? bookingId.toString().slice(-8).toUpperCase() : null;
-  };
-
-  const handleCopyReference = async (booking) => {
-    const bookingId = booking._id || booking.id;
-    const reference = getBookingReference(booking);
-
-    setCopyError("");
-    setCopiedBookingId(null);
-
-    if (!reference || !bookingId) {
-      setCopyError("This booking reference is unavailable.");
-      return;
-    }
-
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard access is unavailable.");
+      if (Object.prototype.hasOwnProperty.call(counts, status)) {
+        counts[status] += 1;
       }
+    });
 
-      await navigator.clipboard.writeText(reference);
-      setCopiedBookingId(bookingId);
-    } catch {
-      setCopyError(
-        `Couldn't copy automatically. Please copy this reference manually: ${reference}`,
-      );
-    }
-  };
-
-  const canCancelBooking = (booking) =>
-    booking.status === "pending" || booking.status === "confirmed";
-
-  const getAppointmentTimestamp = (booking) => {
-    if (!booking.date || !booking.startTime) {
-      return Number.POSITIVE_INFINITY;
-    }
-
-    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(booking.date);
-    const timeMatch = /^(\d{2}):(\d{2})$/.exec(booking.startTime);
-
-    if (!dateMatch || !timeMatch) {
-      return Number.POSITIVE_INFINITY;
-    }
-
-    const [, year, month, day] = dateMatch;
-    const [, hours, minutes] = timeMatch;
-
-    return new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hours),
-      Number(minutes),
-    ).getTime();
-  };
-
-  const getCreationTimestamp = (booking) => {
-    if (!booking.createdAt) {
-      return 0;
-    }
-
-    const timestamp = new Date(booking.createdAt).getTime();
-
-    return Number.isNaN(timestamp) ? 0 : timestamp;
-  };
+    return counts;
+  }, [bookings]);
 
   const dateRangeError =
     fromDate && toDate && toDate < fromDate
@@ -156,59 +175,41 @@ function MyBookings() {
     fromDate !== "" ||
     toDate !== "";
 
-  const bookingCounts = useMemo(() => {
-    const counts = {
-      all: bookings.length,
-      pending: 0,
-      confirmed: 0,
-      completed: 0,
-      cancelled: 0,
-    };
-
-    bookings.forEach((booking) => {
-      if (Object.prototype.hasOwnProperty.call(counts, booking.status)) {
-        counts[booking.status] += 1;
-      }
-    });
-
-    return counts;
-  }, [bookings]);
-
   const filteredBookings = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().replace(/^#/, "").toLowerCase();
+    const query = searchQuery.trim().replace(/^#/, "").toLowerCase();
 
-    const filtered = bookings.filter((booking) => {
-      const matchesStatus =
-        selectedStatus === "all" || booking.status === selectedStatus;
+    return bookings
+      .filter((booking) => {
+        const status = booking.status?.toLowerCase() || "";
 
-      const serviceName = (booking.service?.name || "").toLowerCase();
+        const matchesStatus =
+          selectedStatus === "all" || status === selectedStatus;
 
-      const reference = (getBookingReference(booking) || "").toLowerCase();
+        const serviceName = (booking.service?.name || "").toLowerCase();
 
-      const matchesSearch =
-        !normalizedQuery ||
-        serviceName.includes(normalizedQuery) ||
-        reference.includes(normalizedQuery);
+        const reference = (getBookingReference(booking) || "").toLowerCase();
 
-      const matchesDateRange =
-        !dateRangeError &&
-        (!fromDate || (booking.date && booking.date >= fromDate)) &&
-        (!toDate || (booking.date && booking.date <= toDate));
+        const matchesSearch =
+          !query || serviceName.includes(query) || reference.includes(query);
 
-      return matchesStatus && matchesSearch && matchesDateRange;
-    });
+        const matchesDateRange =
+          !dateRangeError &&
+          (!fromDate || (booking.date && booking.date >= fromDate)) &&
+          (!toDate || (booking.date && booking.date <= toDate));
 
-    return [...filtered].sort((a, b) => {
-      if (sortBy === "newest") {
-        return getCreationTimestamp(b) - getCreationTimestamp(a);
-      }
+        return matchesStatus && matchesSearch && matchesDateRange;
+      })
+      .sort((a, b) => {
+        if (sortBy === "newest") {
+          return getCreationTimestamp(b) - getCreationTimestamp(a);
+        }
 
-      if (sortBy === "oldest") {
-        return getCreationTimestamp(a) - getCreationTimestamp(b);
-      }
+        if (sortBy === "oldest") {
+          return getCreationTimestamp(a) - getCreationTimestamp(b);
+        }
 
-      return getAppointmentTimestamp(a) - getAppointmentTimestamp(b);
-    });
+        return getAppointmentTimestamp(a) - getAppointmentTimestamp(b);
+      });
   }, [
     bookings,
     selectedStatus,
@@ -219,16 +220,61 @@ function MyBookings() {
     dateRangeError,
   ]);
 
-  const handleCancelBooking = async (bookingId) => {
-    if (isCancellingAnyBooking) {
+  const handleRefresh = async () => {
+    setCancelError("");
+    setCopyMessage("");
+    await loadBookings();
+  };
+
+  const handleCopyReference = async (booking) => {
+    if (copyInProgressRef.current) return;
+
+    const bookingId = getBookingId(booking);
+    const reference = getBookingReference(booking);
+
+    setCopyMessage("");
+
+    if (!bookingId || !reference) {
+      setCopyMessage("This booking reference is unavailable.");
       return;
     }
 
-    const booking = bookings.find(
-      (item) => (item._id || item.id) === bookingId,
-    );
+    copyInProgressRef.current = true;
+    setCopyingBookingId(bookingId);
 
-    if (!booking || !canCancelBooking(booking)) {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+
+      await navigator.clipboard.writeText(reference);
+
+      if (mountedRef.current) {
+        setCopyMessage(`Reference #${reference} copied.`);
+      }
+    } catch {
+      if (mountedRef.current) {
+        setCopyMessage(
+          `Automatic copying failed. Copy this reference manually: ${reference}`,
+        );
+      }
+    } finally {
+      copyInProgressRef.current = false;
+
+      if (mountedRef.current) {
+        setCopyingBookingId(null);
+      }
+    }
+  };
+
+  const handleCancelBooking = async (bookingId) => {
+    if (cancelInProgressRef.current) return;
+
+    const booking = bookings.find((item) => getBookingId(item) === bookingId);
+
+    const status = booking?.status?.toLowerCase();
+
+    if (!booking || !["pending", "confirmed"].includes(status)) {
       setCancelError(
         "This booking can no longer be cancelled. Refresh your bookings.",
       );
@@ -239,49 +285,60 @@ function MyBookings() {
       "Are you sure you want to cancel this booking? This action cannot be undone.",
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
+
+    cancelInProgressRef.current = true;
+    setCancellingBookingId(bookingId);
+    setCancelError("");
 
     try {
-      setIsCancellingAnyBooking(true);
-      setCancellingBookingId(bookingId);
-      setCancelError("");
-
       const data = await cancelBooking(bookingId);
 
-      setBookings((currentBookings) =>
-        currentBookings.map((item) =>
-          (item._id || item.id) === bookingId
-            ? {
-                ...item,
-                status: data.booking?.status || "cancelled",
-              }
+      if (!mountedRef.current) return;
+
+      const updatedStatus = data?.booking?.status;
+
+      if (
+        updatedStatus &&
+        !["pending", "confirmed", "completed", "cancelled"].includes(
+          updatedStatus.toLowerCase(),
+        )
+      ) {
+        throw new Error("The server returned an unexpected booking status.");
+      }
+
+      if (updatedStatus && updatedStatus.toLowerCase() !== "cancelled") {
+        throw new Error(
+          "The server did not confirm that the booking was cancelled.",
+        );
+      }
+
+      setBookings((current) =>
+        current.map((item) =>
+          getBookingId(item) === bookingId
+            ? { ...item, status: updatedStatus || "cancelled" }
             : item,
         ),
       );
 
       window.dispatchEvent(new Event("bookflow:notifications-updated"));
     } catch (error) {
-      setCancelError(
-        error.response?.data?.message ||
-          "Unable to cancel this booking. Please try again.",
-      );
+      if (mountedRef.current) {
+        setCancelError(
+          error.response?.data?.message ||
+            error.message ||
+            "Unable to cancel this booking. Please try again.",
+        );
 
-      // Reload to reflect any changes made on the server.
-      await loadBookings();
+        await loadBookings();
+      }
     } finally {
-      setCancellingBookingId(null);
-      setIsCancellingAnyBooking(false);
+      cancelInProgressRef.current = false;
+
+      if (mountedRef.current) {
+        setCancellingBookingId(null);
+      }
     }
-  };
-
-  const handleRefresh = async () => {
-    setCancelError("");
-    setCopyError("");
-    setCopiedBookingId(null);
-
-    await loadBookings();
   };
 
   const clearFilters = () => {
@@ -325,8 +382,8 @@ function MyBookings() {
 
         {!isLoading && !error && <BookingNotifications />}
 
-        {!isLoading && !error && (
-          <div className="mb-6 space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
+        {!isLoading && !error && bookings.length > 0 && (
+          <section className="mb-6 space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
             <div>
               <label
                 htmlFor="booking-search"
@@ -350,16 +407,16 @@ function MyBookings() {
               </h2>
               <div className="flex flex-wrap gap-2">
                 {BOOKING_STATUSES.map((status) => {
-                  const isSelected = selectedStatus === status;
+                  const selected = selectedStatus === status;
 
                   return (
                     <button
                       key={status}
                       type="button"
                       onClick={() => setSelectedStatus(status)}
-                      aria-pressed={isSelected}
+                      aria-pressed={selected}
                       className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                        isSelected
+                        selected
                           ? "bg-slate-900 text-white"
                           : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
                       }`}
@@ -376,6 +433,7 @@ function MyBookings() {
               <h2 className="mb-3 text-sm font-semibold text-slate-700">
                 Filter by appointment date
               </h2>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label
@@ -390,7 +448,7 @@ function MyBookings() {
                     value={fromDate}
                     max={toDate || undefined}
                     onChange={(event) => setFromDate(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                   />
                 </div>
 
@@ -407,7 +465,7 @@ function MyBookings() {
                     value={toDate}
                     min={fromDate || undefined}
                     onChange={(event) => setToDate(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                   />
                 </div>
               </div>
@@ -455,7 +513,16 @@ function MyBookings() {
                 </button>
               )}
             </div>
-          </div>
+          </section>
+        )}
+
+        {copyMessage && (
+          <p
+            role="status"
+            className="mb-5 break-words rounded-xl bg-slate-100 p-3 text-sm text-slate-700"
+          >
+            {copyMessage}
+          </p>
         )}
 
         {isLoading && (
@@ -495,15 +562,6 @@ function MyBookings() {
           </div>
         )}
 
-        {!isLoading && !error && copyError && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200"
-          >
-            <p className="text-sm text-amber-800">{copyError}</p>
-          </div>
-        )}
-
         {!isLoading && !error && bookings.length === 0 && (
           <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
             <h2 className="text-xl font-bold text-slate-900">
@@ -532,9 +590,8 @@ function MyBookings() {
                   : "No matching bookings"}
               </h2>
               <p className="mt-2 text-slate-600">
-                {dateRangeError
-                  ? dateRangeError
-                  : "No bookings match your current filters. Try changing your search, status, or date range."}
+                {dateRangeError ||
+                  "No bookings match your current filters. Try changing your search, status, or date range."}
               </p>
               {hasActiveFilters && (
                 <button
@@ -551,15 +608,16 @@ function MyBookings() {
         {!isLoading && !error && filteredBookings.length > 0 && (
           <div className="space-y-5">
             {filteredBookings.map((booking) => {
-              const bookingId = booking._id || booking.id;
+              const bookingId = getBookingId(booking);
               const isCancelling = cancellingBookingId === bookingId;
-              const canCancel = canCancelBooking(booking);
-              const bookingReference = getBookingReference(booking);
-              const wasCopied = copiedBookingId === bookingId;
+              const status = booking.status?.toLowerCase();
+              const canCancel = ["pending", "confirmed"].includes(status);
+              const reference = getBookingReference(booking);
+              const isCopying = copyingBookingId === bookingId;
 
               return (
                 <article
-                  key={bookingId}
+                  key={bookingId || reference}
                   className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8"
                 >
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -577,19 +635,18 @@ function MyBookings() {
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <p className="font-mono text-sm font-bold text-slate-800">
-                            {bookingReference
-                              ? `#${bookingReference}`
-                              : "Unavailable"}
+                            {reference ? `#${reference}` : "Unavailable"}
                           </p>
 
-                          {bookingReference && (
+                          {reference && (
                             <button
                               type="button"
                               onClick={() => handleCopyReference(booking)}
-                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                              aria-label={`Copy reference ${bookingReference}`}
+                              disabled={isCopying}
+                              className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+                              aria-label={`Copy reference ${reference}`}
                             >
-                              {wasCopied ? "✓ Copied!" : "⧉ Copy"}
+                              {isCopying ? "Copying..." : "⧉ Copy"}
                             </button>
                           )}
                         </div>
@@ -609,7 +666,7 @@ function MyBookings() {
                     <div>
                       <p className="text-sm text-slate-500">Date</p>
                       <p className="mt-1 font-semibold leading-relaxed text-slate-900">
-                        {formatBookingDate(booking.date)}
+                        {formatBookingDate(booking.date) || "Unavailable"}
                       </p>
                     </div>
 
@@ -624,7 +681,9 @@ function MyBookings() {
                     <div>
                       <p className="text-sm text-slate-500">Price</p>
                       <p className="mt-1 font-semibold text-slate-900">
-                        ${booking.service?.price ?? "—"}
+                        {booking.service?.price != null
+                          ? `$${booking.service.price}`
+                          : "—"}
                       </p>
                     </div>
                   </div>
@@ -639,18 +698,20 @@ function MyBookings() {
                   )}
 
                   <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-6">
-                    <Link
-                      to={`/bookings/${bookingId}`}
-                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-                    >
-                      View details
-                    </Link>
+                    {bookingId && (
+                      <Link
+                        to={`/bookings/${bookingId}`}
+                        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                      >
+                        View details
+                      </Link>
+                    )}
 
-                    {canCancel && (
+                    {canCancel && bookingId && (
                       <button
                         type="button"
                         onClick={() => handleCancelBooking(bookingId)}
-                        disabled={isCancellingAnyBooking}
+                        disabled={Boolean(cancellingBookingId)}
                         aria-busy={isCancelling}
                         className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
