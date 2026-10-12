@@ -4,39 +4,29 @@ import { getOwnerDashboardStats } from "../services/userService";
 import { getOwnerBookings } from "../services/bookingService";
 import { useAuth } from "../context/AuthContext";
 
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import PageHeader from "../components/ui/PageHeader";
+import StatusBadge from "../components/ui/StatusBadge";
+
 const STATUS_CONFIG = [
   {
     key: "pendingBookings",
     label: "Pending",
-    color: "text-amber-700",
-    background: "bg-amber-50",
   },
   {
     key: "confirmedBookings",
     label: "Confirmed",
-    color: "text-blue-700",
-    background: "bg-blue-50",
   },
   {
     key: "completedBookings",
     label: "Completed",
-    color: "text-green-700",
-    background: "bg-green-50",
   },
   {
     key: "cancelledBookings",
     label: "Cancelled",
-    color: "text-red-700",
-    background: "bg-red-50",
   },
 ];
-
-const BOOKING_STATUS_STYLES = {
-  pending: "bg-amber-50 text-amber-700 ring-amber-200",
-  confirmed: "bg-blue-50 text-blue-700 ring-blue-200",
-  completed: "bg-green-50 text-green-700 ring-green-200",
-  cancelled: "bg-red-50 text-red-700 ring-red-200",
-};
 
 function toNumber(value) {
   if (value === null || value === undefined || value === "") return 0;
@@ -142,12 +132,6 @@ function formatBookingTime(time) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
-}
-
-function formatStatus(status) {
-  if (typeof status !== "string" || !status.trim()) return "Unknown";
-
-  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
 function Dashboard() {
@@ -311,15 +295,14 @@ function Dashboard() {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-10">
         <div className="mx-auto max-w-6xl">
-          <div
-            role="status"
-            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <p className="font-medium text-slate-800">Loading dashboard...</p>
-            <p className="mt-2 text-sm text-slate-500">
-              Please wait while we load your business statistics.
-            </p>
-          </div>
+          <Card className="p-8 text-center" padding="none">
+            <div role="status">
+              <p className="font-medium text-slate-800">Loading dashboard...</p>
+              <p className="mt-2 text-sm text-slate-500">
+                Please wait while we load your business statistics.
+              </p>
+            </div>
+          </Card>
         </div>
       </main>
     );
@@ -328,59 +311,49 @@ function Dashboard() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              BookFlow
-            </p>
-
-            <h1 className="mt-2 text-3xl font-bold text-slate-900 sm:text-4xl">
-              Welcome back{user?.name ? `, ${user.name}` : ""}
-            </h1>
-
-            <p className="mt-3 max-w-2xl text-slate-600">
-              Manage your services, appointments, and customers from one place.
-            </p>
-          </div>
-
-          <button
-            type="button"
+        <PageHeader
+          title={`Welcome back${user?.name ? `, ${user.name}` : ""}`}
+          description="Manage your services, appointments, and customers from one place."
+        >
+          <Button
+            variant="secondary"
             onClick={refreshDashboard}
             disabled={isRefreshing || isLoading || bookingsLoading}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isRefreshing || isLoading || bookingsLoading
               ? "Refreshing..."
               : "Refresh dashboard"}
-          </button>
-        </header>
+          </Button>
+        </PageHeader>
+
+        <p className="mb-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          BookFlow
+        </p>
 
         {error && (
-          <div
-            role="alert"
-            className="mb-6 rounded-2xl bg-red-50 p-5 ring-1 ring-red-100"
-          >
-            <h2 className="font-semibold text-red-800">
-              {stats ? "Dashboard refresh failed" : "Dashboard unavailable"}
-            </h2>
+          <Card className="mb-6 border-red-100 bg-red-50">
+            <div role="alert">
+              <h2 className="font-semibold text-red-800">
+                {stats ? "Dashboard refresh failed" : "Dashboard unavailable"}
+              </h2>
 
-            <p className="mt-2 text-sm text-red-700">{error}</p>
+              <p className="mt-2 text-sm text-red-700">{error}</p>
 
-            <button
-              type="button"
-              onClick={fetchDashboardStats}
-              disabled={isRefreshing || isLoading}
-              className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
-            >
-              Try again
-            </button>
+              <Button
+                className="mt-4"
+                onClick={fetchDashboardStats}
+                disabled={isRefreshing || isLoading}
+              >
+                Try again
+              </Button>
 
-            {stats && (
-              <p className="mt-3 text-sm text-red-700">
-                Your previously loaded statistics are still displayed.
-              </p>
-            )}
-          </div>
+              {stats && (
+                <p className="mt-3 text-sm text-red-700">
+                  Your previously loaded statistics are still displayed.
+                </p>
+              )}
+            </div>
+          </Card>
         )}
 
         {stats && (
@@ -394,10 +367,7 @@ function Dashboard() {
             <section aria-label="Dashboard statistics">
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 {statCards.map((stat) => (
-                  <article
-                    key={stat.label}
-                    className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
-                  >
+                  <Card key={stat.label}>
                     <p className="text-sm font-medium text-slate-500">
                       {stat.label}
                     </p>
@@ -409,7 +379,7 @@ function Dashboard() {
                     <p className="mt-2 text-sm text-slate-500">
                       {stat.description}
                     </p>
-                  </article>
+                  </Card>
                 ))}
               </div>
             </section>
@@ -426,26 +396,19 @@ function Dashboard() {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {STATUS_CONFIG.map((card) => (
-                    <article
-                      key={card.key}
-                      className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
-                    >
+                  {STATUS_CONFIG.map((item) => (
+                    <Card key={item.key}>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium text-slate-600">
-                          {card.label}
+                          {item.label}
                         </p>
-                        <span
-                          className={`rounded-lg px-3 py-1 text-xs font-semibold ${card.background} ${card.color}`}
-                        >
-                          {card.label}
-                        </span>
+                        <StatusBadge status={item.label.toLowerCase()} />
                       </div>
 
                       <p className="mt-4 text-3xl font-bold text-slate-900">
-                        {formatNumber(stats[card.key])}
+                        {formatNumber(stats[item.key])}
                       </p>
-                    </article>
+                    </Card>
                   ))}
                 </div>
               </section>
@@ -459,7 +422,7 @@ function Dashboard() {
 
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   {hasRevenueStats && (
-                    <article className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                    <Card>
                       <p className="text-sm font-medium text-slate-500">
                         Completed booking revenue
                       </p>
@@ -471,11 +434,11 @@ function Dashboard() {
                       <p className="mt-2 text-sm text-slate-500">
                         Based on the revenue value returned by your API.
                       </p>
-                    </article>
+                    </Card>
                   )}
 
                   {hasStatusStats && (
-                    <article className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                    <Card>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium text-slate-500">
                           Booking completion rate
@@ -503,7 +466,7 @@ function Dashboard() {
                         {formatNumber(completedBookings)} completed out of{" "}
                         {formatNumber(totalBookings)} total bookings.
                       </p>
-                    </article>
+                    </Card>
                   )}
                 </div>
               </section>
@@ -528,7 +491,7 @@ function Dashboard() {
                 </Link>
               </div>
 
-              <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+              <Card padding="none" className="overflow-hidden">
                 {bookingsLoading ? (
                   <div role="status" className="p-8 text-center">
                     <p className="font-medium text-slate-800">
@@ -541,13 +504,9 @@ function Dashboard() {
                       Could not load recent bookings
                     </p>
                     <p className="mt-2 text-sm text-red-700">{bookingsError}</p>
-                    <button
-                      type="button"
-                      onClick={fetchRecentBookings}
-                      className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                    >
+                    <Button className="mt-4" onClick={fetchRecentBookings}>
                       Try again
-                    </button>
+                    </Button>
                   </div>
                 ) : recentBookings.length === 0 ? (
                   <div className="p-8 text-center">
@@ -578,19 +537,15 @@ function Dashboard() {
                                 {booking.service?.name || "Service unavailable"}
                               </p>
                             </div>
-                            <span
-                              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                                BOOKING_STATUS_STYLES[booking.status] ||
-                                "bg-slate-100 text-slate-700 ring-slate-200"
-                              }`}
-                            >
-                              {formatStatus(booking.status)}
-                            </span>
+
+                            <StatusBadge status={booking.status} />
                           </div>
+
                           <p className="mt-3 text-sm text-slate-600">
                             {formatBookingDate(booking.date)} ·{" "}
                             {formatBookingTime(booking.startTime)}
                           </p>
+
                           <Link
                             to={`/bookings/${booking._id}`}
                             className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:text-blue-900"
@@ -612,7 +567,7 @@ function Dashboard() {
                               Service
                             </th>
                             <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Date & time
+                              Date &amp; time
                             </th>
                             <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Status
@@ -622,6 +577,7 @@ function Dashboard() {
                             </th>
                           </tr>
                         </thead>
+
                         <tbody className="divide-y divide-slate-100">
                           {recentBookings.map((booking) => (
                             <tr key={booking._id} className="hover:bg-slate-50">
@@ -633,25 +589,22 @@ function Dashboard() {
                                   {booking.customer?.email || ""}
                                 </p>
                               </td>
+
                               <td className="px-6 py-4 text-sm text-slate-700">
                                 {booking.service?.name || "Service unavailable"}
                               </td>
+
                               <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
                                 <p>{formatBookingDate(booking.date)}</p>
                                 <p className="mt-1 text-slate-500">
                                   {formatBookingTime(booking.startTime)}
                                 </p>
                               </td>
+
                               <td className="whitespace-nowrap px-6 py-4">
-                                <span
-                                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                                    BOOKING_STATUS_STYLES[booking.status] ||
-                                    "bg-slate-100 text-slate-700 ring-slate-200"
-                                  }`}
-                                >
-                                  {formatStatus(booking.status)}
-                                </span>
+                                <StatusBadge status={booking.status} />
                               </td>
+
                               <td className="whitespace-nowrap px-6 py-4">
                                 <Link
                                   to={`/bookings/${booking._id}`}
@@ -667,7 +620,7 @@ function Dashboard() {
                     </div>
                   </>
                 )}
-              </div>
+              </Card>
             </section>
 
             <section className="mt-10">
@@ -678,59 +631,72 @@ function Dashboard() {
               <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 <Link
                   to="/owner/services"
-                  className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:shadow-md"
+                  className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
-                  <h3 className="text-lg font-bold text-slate-900">Services</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Create, update, and manage the services your business
-                    offers.
-                  </p>
-                  <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
-                    Manage services →
-                  </span>
+                  <Card className="h-full transition hover:-translate-y-1 hover:shadow-md">
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Services
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Create, update, and manage the services your business
+                      offers.
+                    </p>
+                    <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
+                      Manage services →
+                    </span>
+                  </Card>
                 </Link>
 
                 <Link
                   to="/owner/bookings"
-                  className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:shadow-md"
+                  className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
-                  <h3 className="text-lg font-bold text-slate-900">Bookings</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Search appointments, manage statuses, and review bookings.
-                  </p>
-                  <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
-                    Manage bookings →
-                  </span>
+                  <Card className="h-full transition hover:-translate-y-1 hover:shadow-md">
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Bookings
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Search appointments, manage statuses, and review bookings.
+                    </p>
+                    <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
+                      Manage bookings →
+                    </span>
+                  </Card>
                 </Link>
 
                 <Link
                   to="/owner/customers"
-                  className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:shadow-md"
+                  className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
-                  <h3 className="text-lg font-bold text-slate-900">
-                    Customers
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    View customers who have booked your services.
-                  </p>
-                  <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
-                    View customers →
-                  </span>
+                  <Card className="h-full transition hover:-translate-y-1 hover:shadow-md">
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Customers
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      View customers who have booked your services.
+                    </p>
+                    <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
+                      View customers →
+                    </span>
+                  </Card>
                 </Link>
 
                 <Link
                   to="/owner/availability"
-                  className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:shadow-md"
+                  className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
-                  <h3 className="text-lg font-bold text-slate-900">
-                    Availability
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Set the days and hours when customers can book appointments.
-                  </p>
-                  <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
-                    Manage availability →
-                  </span>
+                  <Card className="h-full transition hover:-translate-y-1 hover:shadow-md">
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Availability
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Set the days and hours when customers can book
+                      appointments.
+                    </p>
+                    <span className="mt-5 inline-block text-sm font-semibold text-slate-900">
+                      Manage availability →
+                    </span>
+                  </Card>
                 </Link>
               </div>
             </section>
