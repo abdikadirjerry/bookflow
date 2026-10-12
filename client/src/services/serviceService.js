@@ -1,7 +1,15 @@
 import api from "./api";
 
-const getServices = async () => {
-  const response = await api.get("/services");
+const getServices = async (pagination) => {
+  const response = await api.get("/services", {
+    params: pagination,
+  });
+
+  return response.data;
+};
+
+const getServiceProviders = async () => {
+  const response = await api.get("/services/providers");
 
   return response.data;
 };
@@ -38,6 +46,7 @@ const deleteService = async (serviceId) => {
 
 export {
   getServices,
+  getServiceProviders,
   getOwnerServices,
   getServiceById,
   createService,
