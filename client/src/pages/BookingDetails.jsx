@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getMyBookings } from "../services/bookingService";
 import {
@@ -24,39 +24,77 @@ const BOOKING_STEPS = [
   },
 ];
 
+const STATUS_LABELS = {
+  pending: "Pending",
+  confirmed: "Confirmed",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+const STATUS_STYLES = {
+  pending: "bg-yellow-100 text-yellow-800",
+  confirmed: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-800",
+};
+
 function getBookingId(booking) {
-  return booking?._id || booking?.id || "";
+  const id = booking?._id ?? booking?.id;
+  return id == null ? "" : String(id);
 }
 
 function getBookingStatus(booking) {
-  return String(booking?.status || "pending").toLowerCase();
+  const status = String(booking?.status || "pending").toLowerCase();
+  return STATUS_LABELS[status] ? status : "unknown";
 }
 
 function getStatusLabel(status) {
-  const labels = {
-    pending: "Pending",
-    confirmed: "Confirmed",
-    completed: "Completed",
-    cancelled: "Cancelled",
-  };
-
-  return labels[status] || status;
+  return STATUS_LABELS[status] || "Unknown status";
 }
 
 function getStatusStyles(status) {
-  const styles = {
-    pending: "bg-yellow-100 text-yellow-800",
-    confirmed: "bg-blue-100 text-blue-800",
-    completed: "bg-green-100 text-green-800",
-    cancelled: "bg-red-100 text-red-800",
-  };
+  return STATUS_STYLES[status] || "bg-gray-100 text-gray-700";
+}
 
-  return styles[status] || "bg-gray-100 text-gray-700";
+function getBookingsFromResponse(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.bookings)) return result.bookings;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.data?.bookings)) return result.data.bookings;
+
+  throw new Error("The server returned an unexpected bookings response.");
+}
+
+function formatPrice(price) {
+  if (price == null || price === "") return null;
+
+  const numericPrice = Number(price);
+
+  if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+    return null;
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(numericPrice);
+}
+
+function formatDuration(duration) {
+  if (duration == null || duration === "") return null;
+
+  const numericDuration = Number(duration);
+
+  if (!Number.isFinite(numericDuration) || numericDuration <= 0) {
+    return null;
+  }
+
+  return `${numericDuration} ${numericDuration === 1 ? "minute" : "minutes"}`;
 }
 
 function getTimelineState(stepStatus, currentStatus) {
-  if (currentStatus === "cancelled") {
-    return "cancelled";
+  if (currentStatus === "cancelled" || currentStatus === "unknown") {
+    return "upcoming";
   }
 
   const currentIndex = BOOKING_STEPS.findIndex(
@@ -66,17 +104,9 @@ function getTimelineState(stepStatus, currentStatus) {
     (step) => step.status === stepStatus,
   );
 
-  if (currentIndex === -1 || stepIndex === -1) {
-    return "upcoming";
-  }
-
-  if (stepIndex < currentIndex) {
-    return "complete";
-  }
-
-  if (stepIndex === currentIndex) {
-    return "current";
-  }
+  if (currentIndex === -1 || stepIndex === -1) return "upcoming";
+  if (stepIndex < currentIndex) return "complete";
+  if (stepIndex === currentIndex) return "current";
 
   return "upcoming";
 }
@@ -84,13 +114,24 @@ function getTimelineState(stepStatus, currentStatus) {
 function StatusTimeline({ status }) {
   if (status === "cancelled") {
     return (
-      <section className="rounded-xl border border-red-200 bg-red-50 p-5">
+      <section
+        aria-labelledby="booking-progress-heading"
+        className="rounded-xl border border-red-200 bg-red-50 p-5"
+      >
         <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg text-red-700">
+          <span
+            aria-hidden="true"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg text-red-700"
+          >
             ×
           </span>
           <div>
-            <h3 className="font-semibold text-red-900">Booking cancelled</h3>
+            <h2
+              id="booking-progress-heading"
+              className="font-semibold text-red-900"
+            >
+              Booking cancelled
+            </h2>
             <p className="mt-1 text-sm text-red-800">
               This booking will not proceed. You can return to your bookings to
               review your other reservations.
@@ -101,9 +142,31 @@ function StatusTimeline({ status }) {
     );
   }
 
+  if (status === "unknown") {
+    return (
+      <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="text-lg font-semibold text-gray-900">
+          Booking progress
+        </h2>
+        <p className="mt-2 text-sm text-gray-600">
+          The booking has an unrecognized status. Check your bookings again
+          later for an update.
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5">
-      <h2 className="text-lg font-semibold text-gray-900">Booking progress</h2>
+    <section
+      aria-labelledby="booking-progress-heading"
+      className="rounded-xl border border-gray-200 bg-white p-5"
+    >
+      <h2
+        id="booking-progress-heading"
+        className="text-lg font-semibold text-gray-900"
+      >
+        Booking progress
+      </h2>
       <p className="mt-1 text-sm text-gray-500">
         Follow the status of your booking below.
       </p>
@@ -128,6 +191,7 @@ function StatusTimeline({ status }) {
               )}
 
               <span
+                aria-hidden="true"
                 className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-semibold ${
                   state === "complete"
                     ? "border-green-600 bg-green-600 text-white"
@@ -135,13 +199,6 @@ function StatusTimeline({ status }) {
                       ? "border-blue-600 bg-blue-50 text-blue-700"
                       : "border-gray-300 bg-white text-gray-400"
                 }`}
-                aria-label={
-                  state === "complete"
-                    ? "Completed step"
-                    : state === "current"
-                      ? "Current step"
-                      : "Upcoming step"
-                }
               >
                 {state === "complete" ? "✓" : index + 1}
               </span>
@@ -196,44 +253,64 @@ export default function BookingDetails() {
   const [error, setError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
 
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(false);
+
   const loadBooking = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
     setError("");
+    setBooking(null);
+    setCopyMessage("");
 
     try {
+      if (!bookingId) {
+        throw new Error("A booking reference is required.");
+      }
+
       const result = await getMyBookings();
-      const bookings = Array.isArray(result)
-        ? result
-        : Array.isArray(result?.bookings)
-          ? result.bookings
-          : Array.isArray(result?.data)
-            ? result.data
-            : [];
+      const bookings = getBookingsFromResponse(result);
 
       const foundBooking = bookings.find(
         (item) => getBookingId(item) === bookingId,
       );
 
       if (!foundBooking) {
-        setBooking(null);
-        setError("We couldn't find this booking in your bookings.");
+        throw new Error("We couldn't find this booking in your bookings.");
+      }
+
+      if (requestId !== requestIdRef.current || !mountedRef.current) {
         return;
       }
 
       setBooking(foundBooking);
     } catch (err) {
+      if (requestId !== requestIdRef.current || !mountedRef.current) {
+        return;
+      }
+
       setBooking(null);
       setError(
         err?.response?.data?.message ||
+          err?.message ||
           "Unable to load this booking. Please try again.",
       );
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current && mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [bookingId]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadBooking();
+
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
   }, [loadBooking]);
 
   async function handleCopyReference() {
@@ -245,16 +322,24 @@ export default function BookingDetails() {
     }
 
     try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+
       await navigator.clipboard.writeText(fullId);
       setCopyMessage("Full booking ID copied.");
     } catch {
-      setCopyMessage(`Full booking ID: ${fullId}`);
+      setCopyMessage(`Copy unavailable. Booking ID: ${fullId}`);
     }
   }
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main
+        className="mx-auto max-w-3xl px-4 py-10"
+        aria-busy="true"
+        aria-live="polite"
+      >
         <p className="text-gray-600">Loading booking details...</p>
       </main>
     );
@@ -263,7 +348,10 @@ export default function BookingDetails() {
   if (error || !booking) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+        <div
+          className="rounded-xl border border-red-200 bg-red-50 p-5"
+          role="alert"
+        >
           <h1 className="text-lg font-semibold text-red-900">
             Unable to show booking
           </h1>
@@ -275,7 +363,7 @@ export default function BookingDetails() {
             <button
               type="button"
               onClick={loadBooking}
-              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
             >
               Try again
             </button>
@@ -294,6 +382,7 @@ export default function BookingDetails() {
   const fullId = getBookingId(booking);
   const reference = fullId ? fullId.slice(-8).toUpperCase() : "Unavailable";
   const status = getBookingStatus(booking);
+
   const serviceName =
     booking.service?.name || booking.service?.title || "Service";
   const providerName =
@@ -301,15 +390,30 @@ export default function BookingDetails() {
     booking.service?.provider?.name ||
     booking.provider?.name ||
     "Not available";
-  const price = booking.service?.price ?? booking.price;
-  const duration = booking.service?.duration ?? booking.duration;
+
+  const price = formatPrice(booking.service?.price ?? booking.price);
+  const duration = formatDuration(
+    booking.service?.duration ?? booking.duration,
+  );
+
+  const dateLabel = booking.date
+    ? formatBookingDate(booking.date)
+    : "Date unavailable";
+
+  const startTimeLabel = booking.startTime
+    ? formatBookingTime(booking.startTime)
+    : "Time unavailable";
+
+  const endTimeLabel = booking.endTime
+    ? formatBookingTime(booking.endTime)
+    : "";
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
       <div className="mb-6">
         <Link
           to="/bookings"
-          className="text-sm font-medium text-blue-700 hover:text-blue-900"
+          className="text-sm font-medium text-blue-700 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           ← Back to my bookings
         </Link>
@@ -317,7 +421,7 @@ export default function BookingDetails() {
 
       <header className="mb-6">
         <p className="text-sm text-gray-500">Booking details</p>
-        <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
+        <h1 className="mt-1 break-words text-2xl font-bold text-gray-900 sm:text-3xl">
           {serviceName}
         </h1>
 
@@ -329,13 +433,16 @@ export default function BookingDetails() {
           >
             {getStatusLabel(status)}
           </span>
+
           <span className="text-sm text-gray-500">
             Reference: <strong className="text-gray-800">#{reference}</strong>
           </span>
+
           <button
             type="button"
             onClick={handleCopyReference}
-            className="text-sm font-medium text-blue-700 hover:text-blue-900"
+            disabled={!fullId}
+            className="text-sm font-medium text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             Copy full ID
           </button>
@@ -351,51 +458,49 @@ export default function BookingDetails() {
       <div className="space-y-5">
         <StatusTimeline status={status} />
 
-        <section className="rounded-xl border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <section
+          aria-labelledby="appointment-information-heading"
+          className="rounded-xl border border-gray-200 bg-white p-5"
+        >
+          <h2
+            id="appointment-information-heading"
+            className="text-lg font-semibold text-gray-900"
+          >
             Appointment information
           </h2>
 
           <dl className="mt-4 grid gap-5 sm:grid-cols-2">
             <div>
               <dt className="text-sm text-gray-500">Date</dt>
-              <dd className="mt-1 font-medium text-gray-900">
-                {formatBookingDate(booking.date)}
-              </dd>
+              <dd className="mt-1 font-medium text-gray-900">{dateLabel}</dd>
             </div>
 
             <div>
               <dt className="text-sm text-gray-500">Time</dt>
               <dd className="mt-1 font-medium text-gray-900">
-                {booking.startTime
-                  ? formatBookingTime(booking.startTime)
-                  : "Time unavailable"}
-                {booking.endTime
-                  ? ` – ${formatBookingTime(booking.endTime)}`
-                  : ""}
+                {startTimeLabel}
+                {endTimeLabel ? ` – ${endTimeLabel}` : ""}
               </dd>
             </div>
 
             <div>
               <dt className="text-sm text-gray-500">Service provider</dt>
-              <dd className="mt-1 font-medium text-gray-900">{providerName}</dd>
+              <dd className="mt-1 break-words font-medium text-gray-900">
+                {providerName}
+              </dd>
             </div>
 
-            {duration != null && (
+            {duration && (
               <div>
                 <dt className="text-sm text-gray-500">Duration</dt>
-                <dd className="mt-1 font-medium text-gray-900">
-                  {duration} minutes
-                </dd>
+                <dd className="mt-1 font-medium text-gray-900">{duration}</dd>
               </div>
             )}
 
-            {price != null && (
+            {price && (
               <div>
                 <dt className="text-sm text-gray-500">Price</dt>
-                <dd className="mt-1 font-medium text-gray-900">
-                  ${Number(price).toFixed(2)}
-                </dd>
+                <dd className="mt-1 font-medium text-gray-900">{price}</dd>
               </div>
             )}
           </dl>
@@ -405,13 +510,14 @@ export default function BookingDetails() {
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
           to="/bookings"
-          className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-800"
+          className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           View all bookings
         </Link>
+
         <Link
           to="/services"
-          className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           Browse services
         </Link>
