@@ -10,21 +10,15 @@ const getOwnerCustomers = async (req, res) => {
     const serviceIds = services.map((service) => service._id);
 
     const bookings = await Booking.find({
-      service: {
-        $in: serviceIds,
-      },
+      service: { $in: serviceIds },
     })
       .populate("customer", "name email")
-      .sort({
-        createdAt: -1,
-      });
+      .sort({ createdAt: -1 });
 
     const customersMap = new Map();
 
     for (const booking of bookings) {
-      if (!booking.customer) {
-        continue;
-      }
+      if (!booking.customer) continue;
 
       const customerId = booking.customer._id.toString();
 
@@ -42,14 +36,14 @@ const getOwnerCustomers = async (req, res) => {
 
     const customers = Array.from(customersMap.values());
 
-    res.status(200).json({
+    return res.status(200).json({
       count: customers.length,
       customers,
     });
   } catch (error) {
     console.error("Get owner customers error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while fetching customers",
     });
   }
@@ -57,11 +51,19 @@ const getOwnerCustomers = async (req, res) => {
 
 const getOwnerDashboardStats = async (req, res) => {
   try {
+    const ownerId = req.user.userId;
+
     const services = await Service.find({
-      owner: req.user.userId,
+      owner: ownerId,
     }).select("_id");
 
     const serviceIds = services.map((service) => service._id);
+
+    const now = new Date();
+
+    const bookingFilter = {
+      service: { $in: serviceIds },
+    };
 
     const [
       totalServices,
@@ -71,58 +73,51 @@ const getOwnerDashboardStats = async (req, res) => {
       confirmedBookings,
       completedBookings,
       cancelledBookings,
+      upcomingBookings,
+      uniqueCustomerIds,
     ] = await Promise.all([
-      Service.countDocuments({
-        owner: req.user.userId,
-      }),
+      Service.countDocuments({ owner: ownerId }),
 
       Service.countDocuments({
-        owner: req.user.userId,
+        owner: ownerId,
         isActive: true,
       }),
 
-      Booking.countDocuments({
-        service: {
-          $in: serviceIds,
-        },
-      }),
+      Booking.countDocuments(bookingFilter),
 
       Booking.countDocuments({
-        service: {
-          $in: serviceIds,
-        },
+        ...bookingFilter,
         status: "pending",
       }),
 
       Booking.countDocuments({
-        service: {
-          $in: serviceIds,
-        },
+        ...bookingFilter,
         status: "confirmed",
       }),
 
       Booking.countDocuments({
-        service: {
-          $in: serviceIds,
-        },
+        ...bookingFilter,
         status: "completed",
       }),
 
       Booking.countDocuments({
-        service: {
-          $in: serviceIds,
-        },
+        ...bookingFilter,
         status: "cancelled",
+      }),
+
+      Booking.countDocuments({
+        ...bookingFilter,
+        status: "confirmed",
+        date: { $gte: now },
+      }),
+
+      Booking.distinct("customer", {
+        ...bookingFilter,
+        customer: { $ne: null },
       }),
     ]);
 
-    const uniqueCustomerIds = await Booking.distinct("customer", {
-      service: {
-        $in: serviceIds,
-      },
-    });
-
-    res.status(200).json({
+    return res.status(200).json({
       stats: {
         totalServices,
         activeServices,
@@ -132,12 +127,13 @@ const getOwnerDashboardStats = async (req, res) => {
         confirmedBookings,
         completedBookings,
         cancelledBookings,
+        upcomingBookings,
       },
     });
   } catch (error) {
     console.error("Get owner dashboard stats error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while fetching dashboard statistics",
     });
   }
