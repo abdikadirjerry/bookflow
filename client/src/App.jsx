@@ -22,7 +22,7 @@ import RoleRoute from "./routes/RoleRoute";
 import Navbar from "./components/Navbar";
 import OwnerLayout from "./components/OwnerLayout";
 
-function AppLayout() {
+function CustomerLayout() {
   return (
     <>
       <Navbar />
@@ -39,10 +39,10 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* Protected routes */}
+        {/* Authenticated routes */}
         <Route element={<ProtectedRoute />}>
-          <Route element={<AppLayout />}>
-            {/* Customer pages */}
+          {/* Customer layout */}
+          <Route element={<CustomerLayout />}>
             <Route path="/services" element={<Services />} />
             <Route path="/services/:serviceId" element={<ServiceDetails />} />
             <Route path="/services/:serviceId/book" element={<Booking />} />
@@ -50,24 +50,24 @@ function App() {
             <Route path="/bookings" element={<MyBookings />} />
             <Route path="/bookings/:bookingId" element={<BookingDetails />} />
             <Route path="/notifications" element={<Notifications />} />
+          </Route>
 
-            {/* Business owner pages */}
-            <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>
-              <Route element={<OwnerLayout />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/owner/services" element={<OwnerServices />} />
-                <Route path="/owner/services/new" element={<CreateService />} />
-                <Route
-                  path="/owner/services/:serviceId/edit"
-                  element={<EditService />}
-                />
-                <Route path="/owner/bookings" element={<OwnerBookings />} />
-                <Route path="/owner/customers" element={<OwnerCustomers />} />
-                <Route
-                  path="/owner/availability"
-                  element={<OwnerAvailability />}
-                />
-              </Route>
+          {/* Owner layout — no regular Navbar */}
+          <Route element={<RoleRoute allowedRoles={["business_owner"]} />}>
+            <Route element={<OwnerLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/owner/services" element={<OwnerServices />} />
+              <Route path="/owner/services/new" element={<CreateService />} />
+              <Route
+                path="/owner/services/:serviceId/edit"
+                element={<EditService />}
+              />
+              <Route path="/owner/bookings" element={<OwnerBookings />} />
+              <Route path="/owner/customers" element={<OwnerCustomers />} />
+              <Route
+                path="/owner/availability"
+                element={<OwnerAvailability />}
+              />
             </Route>
           </Route>
         </Route>
