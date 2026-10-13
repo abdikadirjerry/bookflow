@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+
 import { deleteService, getOwnerServices } from "../services/serviceService";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import PageHeader from "../components/ui/PageHeader";
+import StatusBadge from "../components/ui/StatusBadge";
 
 function OwnerServices() {
   const [services, setServices] = useState([]);
@@ -12,25 +19,46 @@ function OwnerServices() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("name");
 
+  const requestIdRef = useRef(0);
+  const deactivatingRef = useRef(false);
+
   const fetchServices = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+
     try {
       setIsLoading(true);
       setError("");
 
       const data = await getOwnerServices();
-      setServices(Array.isArray(data?.services) ? data.services : []);
+
+      if (requestId !== requestIdRef.current) return;
+
+      if (!Array.isArray(data?.services)) {
+        throw new Error("The server returned an invalid services response.");
+      }
+
+      setServices(data.services);
     } catch (requestError) {
+      if (requestId !== requestIdRef.current) return;
+
       setError(
         requestError.response?.data?.message ||
+          requestError.message ||
           "Unable to load your services. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchServices();
+
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [fetchServices]);
 
   const activeCount = services.filter((service) => service.isActive).length;
@@ -42,10 +70,7 @@ function OwnerServices() {
     return services
       .filter((service) => {
         const matchesSearch = [service.name, service.description].some(
-          (value) =>
-            String(value || "")
-              .toLowerCase()
-              .includes(query),
+          (value) => String(value || "").toLowerCase().includes(query),
         );
 
         const matchesStatus =
@@ -73,13 +98,19 @@ function OwnerServices() {
   }, [services, search, statusFilter, sortOrder]);
 
   const handleDeactivate = async (serviceId) => {
-    if (deactivatingServiceId) return;
+    if (deactivatingRef.current) return;
+
+    const service = services.find((item) => item._id === serviceId);
+
+    if (!service || !service.isActive) return;
 
     const confirmed = window.confirm(
       "Are you sure you want to deactivate this service? Customers will no longer be able to book it.",
     );
 
     if (!confirmed) return;
+
+    deactivatingRef.current = true;
 
     try {
       setDeactivatingServiceId(serviceId);
@@ -88,8 +119,8 @@ function OwnerServices() {
       await deleteService(serviceId);
 
       setServices((currentServices) =>
-        currentServices.map((service) =>
-          service._id === serviceId ? { ...service, isActive: false } : service,
+        currentServices.map((item) =>
+          item._id === serviceId ? { ...item, isActive: false } : item,
         ),
       );
     } catch (requestError) {
@@ -98,6 +129,7 @@ function OwnerServices() {
           "Unable to deactivate this service. Please try again.",
       );
     } finally {
+      deactivatingRef.current = false;
       setDeactivatingServiceId(null);
     }
   };
@@ -108,50 +140,41 @@ function OwnerServices() {
     setSortOrder("name");
   };
 
+  const hasActiveFilters =
+    Boolean(search) || statusFilter !== "all" || sortOrder !== "name";
+
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8">
-          <Link
-            to="/dashboard"
-            className="text-sm font-semibold text-slate-700 hover:text-slate-900"
-          >
-            ← Back to dashboard
-          </Link>
+        <Link
+          to="/dashboard"
+          className="text-sm font-semibold text-slate-600 transition hover:text-slate-900"
+        >
+          ← Back to dashboard
+        </Link>
 
-          <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Business management
-              </p>
+        <div className="mt-5">
+          <PageHeader
+            eyebrow="Business management"
+            title="My services"
+            description="Manage the services your customers can book."
+            action={
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={fetchServices}
+                  disabled={isLoading || Boolean(deactivatingServiceId)}
+                >
+                  {isLoading ? "Loading..." : "Refresh"}
+                </Button>
 
-              <h1 className="mt-2 text-3xl font-bold text-slate-900 sm:text-4xl">
-                My services
-              </h1>
-
-              <p className="mt-3 max-w-2xl text-slate-600">
-                Manage the services your customers can book.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={fetchServices}
-                disabled={isLoading || Boolean(deactivatingServiceId)}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isLoading ? "Loading..." : "Refresh"}
-              </button>
-
-              <Link
-                to="/owner/services/new"
-                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
-              >
-                Create service
-              </Link>
-            </div>
-          </div>
+                <Button as={Link} to="/owner/services/new">
+                  Create service
+                </Button>
+              </div>
+            }
+          />
         </div>
 
         {!isLoading && !error && (
@@ -159,54 +182,53 @@ function OwnerServices() {
             aria-label="Service statistics"
             className="mb-6 grid gap-4 sm:grid-cols-3"
           >
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <Card>
               <p className="text-sm font-medium text-slate-500">
                 Total services
               </p>
               <p className="mt-2 text-3xl font-bold text-slate-900">
                 {services.length}
               </p>
-            </div>
+            </Card>
 
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <Card>
               <p className="text-sm font-medium text-slate-500">
                 Active services
               </p>
               <p className="mt-2 text-3xl font-bold text-green-700">
                 {activeCount}
               </p>
-            </div>
+            </Card>
 
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <Card>
               <p className="text-sm font-medium text-slate-500">
                 Inactive services
               </p>
               <p className="mt-2 text-3xl font-bold text-slate-700">
                 {inactiveCount}
               </p>
-            </div>
+            </Card>
           </section>
         )}
 
         {error && (
-          <div
-            role="alert"
-            className="mb-6 rounded-2xl bg-red-50 p-6 ring-1 ring-red-100"
-          >
-            <h2 className="font-semibold text-red-800">
-              Unable to load services
-            </h2>
-            <p className="mt-2 text-sm text-red-700">{error}</p>
-
-            <button
-              type="button"
-              onClick={fetchServices}
-              disabled={isLoading}
-              className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50"
-            >
-              Try again
-            </button>
-          </div>
+          <Card>
+            <div role="alert">
+              <h2 className="font-semibold text-red-800">
+                Unable to load services
+              </h2>
+              <p className="mt-2 text-sm text-red-700">{error}</p>
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  onClick={fetchServices}
+                  disabled={isLoading}
+                >
+                  Try again
+                </Button>
+              </div>
+            </div>
+          </Card>
         )}
 
         {deactivateError && (
@@ -227,200 +249,211 @@ function OwnerServices() {
         )}
 
         {isLoading && (
-          <div
-            role="status"
-            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <p className="text-slate-600">Loading your services...</p>
-          </div>
+          <Card>
+            <div role="status" className="py-5 text-center">
+              <p className="text-slate-600">Loading your services...</p>
+            </div>
+          </Card>
         )}
 
         {!isLoading && !error && services.length === 0 && (
-          <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
-            <h2 className="text-xl font-bold text-slate-900">
-              No services yet
-            </h2>
-            <p className="mt-2 text-slate-600">
-              Create your first service so customers can start booking
-              appointments.
-            </p>
-            <Link
-              to="/owner/services/new"
-              className="mt-6 inline-block rounded-lg bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
-            >
-              Create your first service
-            </Link>
-          </div>
+          <Card>
+            <div className="py-5 text-center">
+              <h2 className="text-xl font-bold text-slate-900">
+                No services yet
+              </h2>
+              <p className="mt-2 text-slate-600">
+                Create your first service so customers can start booking
+                appointments.
+              </p>
+              <div className="mt-6">
+                <Button as={Link} to="/owner/services/new">
+                  Create your first service
+                </Button>
+              </div>
+            </div>
+          </Card>
         )}
 
         {!isLoading && !error && services.length > 0 && (
           <>
-            <section
-              aria-label="Service filters"
-              className="mb-6 grid gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:grid-cols-3"
-            >
-              <div>
-                <label
-                  htmlFor="service-search"
-                  className="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                  Search services
-                </label>
-                <input
-                  id="service-search"
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search name or description..."
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="service-status"
-                  className="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                  Status
-                </label>
-                <select
-                  id="service-status"
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
-                >
-                  <option value="all">All services</option>
-                  <option value="active">Active only</option>
-                  <option value="inactive">Inactive only</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="service-sort"
-                  className="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                  Sort by
-                </label>
-                <select
-                  id="service-sort"
-                  value={sortOrder}
-                  onChange={(event) => setSortOrder(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
-                >
-                  <option value="name">Name (A–Z)</option>
-                  <option value="price-low">Price (low to high)</option>
-                  <option value="price-high">Price (high to low)</option>
-                  <option value="duration">Shortest duration</option>
-                </select>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-3">
-                <p className="text-sm text-slate-500">
-                  Showing {filteredServices.length} of {services.length}{" "}
-                  services
-                </p>
-
-                {(search || statusFilter !== "all" || sortOrder !== "name") && (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="text-sm font-semibold text-blue-700 hover:text-blue-900"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-            </section>
-
-            {filteredServices.length === 0 ? (
-              <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
-                <h2 className="text-xl font-bold text-slate-900">
-                  No matching services
-                </h2>
-                <p className="mt-2 text-slate-600">
-                  Try changing your search or status filter.
-                </p>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Clear filters
-                </button>
-              </div>
-            ) : (
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                {filteredServices.map((service) => {
-                  const isDeactivating = deactivatingServiceId === service._id;
-
-                  return (
-                    <article
-                      key={service._id}
-                      className="flex h-full flex-col rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+            <Card>
+              <section aria-label="Service filters" className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label
+                      htmlFor="service-search"
+                      className="mb-1.5 block text-sm font-semibold text-slate-700"
                     >
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-4">
-                          <h2 className="text-xl font-bold text-slate-900">
-                            {service.name}
-                          </h2>
+                      Search services
+                    </label>
+                    <Input
+                      id="service-search"
+                      type="search"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search name or description..."
+                    />
+                  </div>
 
-                          <span
-                            className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-                              service.isActive
-                                ? "bg-green-50 text-green-700"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {service.isActive ? "Active" : "Inactive"}
-                          </span>
-                        </div>
+                  <div>
+                    <label
+                      htmlFor="service-status"
+                      className="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                      Status
+                    </label>
+                    <select
+                      id="service-status"
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    >
+                      <option value="all">All services</option>
+                      <option value="active">Active only</option>
+                      <option value="inactive">Inactive only</option>
+                    </select>
+                  </div>
 
-                        <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">
-                          {service.description || "No description provided."}
-                        </p>
+                  <div>
+                    <label
+                      htmlFor="service-sort"
+                      className="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                      Sort by
+                    </label>
+                    <select
+                      id="service-sort"
+                      value={sortOrder}
+                      onChange={(event) => setSortOrder(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    >
+                      <option value="name">Name (A–Z)</option>
+                      <option value="price-low">Price (low to high)</option>
+                      <option value="price-high">Price (high to low)</option>
+                      <option value="duration">Shortest duration</option>
+                    </select>
+                  </div>
+                </div>
 
-                        <div className="mt-5 grid grid-cols-2 gap-4 border-t border-slate-200 pt-5">
-                          <div>
-                            <p className="text-sm text-slate-500">Price</p>
-                            <p className="mt-1 font-semibold text-slate-900">
-                              ${Number(service.price || 0).toFixed(2)}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                  <p className="text-sm text-slate-500">
+                    Showing {filteredServices.length} of {services.length}{" "}
+                    services
+                  </p>
+
+                  {hasActiveFilters && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={clearFilters}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              </section>
+            </Card>
+
+            <div className="mt-6">
+              {filteredServices.length === 0 ? (
+                <Card>
+                  <div className="py-5 text-center">
+                    <h2 className="text-xl font-bold text-slate-900">
+                      No matching services
+                    </h2>
+                    <p className="mt-2 text-slate-600">
+                      Try changing your search or status filter.
+                    </p>
+                    <div className="mt-4">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={clearFilters}
+                      >
+                        Clear filters
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ) : (
+                <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredServices.map((service) => {
+                    const isDeactivating =
+                      deactivatingServiceId === service._id;
+
+                    return (
+                      <Card key={service._id}>
+                        <article className="flex h-full flex-col">
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between gap-4">
+                              <h2 className="text-xl font-bold text-slate-900">
+                                {service.name || "Untitled service"}
+                              </h2>
+
+                              <StatusBadge
+                                status={service.isActive ? "active" : "inactive"}
+                              />
+                            </div>
+
+                            <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">
+                              {service.description ||
+                                "No description provided."}
                             </p>
+
+                            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-slate-200 pt-5">
+                              <div>
+                                <p className="text-sm text-slate-500">Price</p>
+                                <p className="mt-1 font-semibold text-slate-900">
+                                  $
+                                  {Number.isFinite(Number(service.price))
+                                    ? Number(service.price).toFixed(2)
+                                    : "0.00"}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="text-sm text-slate-500">
+                                  Duration
+                                </p>
+                                <p className="mt-1 font-semibold text-slate-900">
+                                  {service.duration ?? "—"} min
+                                </p>
+                              </div>
+                            </div>
                           </div>
 
-                          <div>
-                            <p className="text-sm text-slate-500">Duration</p>
-                            <p className="mt-1 font-semibold text-slate-900">
-                              {service.duration} min
-                            </p>
+                          <div className="mt-6 flex gap-3 border-t border-slate-200 pt-5">
+                            <Button
+                              as={Link}
+                              to={`/owner/services/${service._id}/edit`}
+                              variant="secondary"
+                              className="flex-1"
+                            >
+                              Edit
+                            </Button>
+
+                            {service.isActive && (
+                              <Button
+                                type="button"
+                                variant="danger"
+                                className="flex-1"
+                                onClick={() => handleDeactivate(service._id)}
+                                disabled={Boolean(deactivatingServiceId)}
+                              >
+                                {isDeactivating
+                                  ? "Deactivating..."
+                                  : "Deactivate"}
+                              </Button>
+                            )}
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 flex gap-3 border-t border-slate-200 pt-5">
-                        <Link
-                          to={`/owner/services/${service._id}/edit`}
-                          className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                        >
-                          Edit
-                        </Link>
-
-                        {service.isActive && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeactivate(service._id)}
-                            disabled={Boolean(deactivatingServiceId)}
-                            className="flex-1 rounded-lg border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {isDeactivating ? "Deactivating..." : "Deactivate"}
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
+                        </article>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
