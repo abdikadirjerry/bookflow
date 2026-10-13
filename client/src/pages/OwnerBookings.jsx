@@ -1,9 +1,17 @@
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+
 import {
   getOwnerBookings,
   updateBookingStatus,
 } from "../services/bookingService";
+
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import PageHeader from "../components/ui/PageHeader";
+import StatusBadge from "../components/ui/StatusBadge";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -38,7 +46,9 @@ function getBookingsFromResponse(data) {
 
   if (
     !bookings ||
-    !bookings.every((booking) => booking && typeof booking === "object")
+    !bookings.every(
+      (booking) => booking && typeof booking === "object",
+    )
   ) {
     throw new Error("The server returned an invalid bookings response.");
   }
@@ -62,9 +72,15 @@ function getDateTimestamp(booking) {
 
   if (Number.isNaN(date.getTime())) return 0;
 
-  const timeMatch = /^(\d{1,2}):(\d{2})/.exec(String(booking.startTime || ""));
+  const timeMatch = /^(\d{1,2}):(\d{2})/.exec(
+    String(booking.startTime || ""),
+  );
 
-  if (timeMatch && Number(timeMatch[1]) <= 23 && Number(timeMatch[2]) <= 59) {
+  if (
+    timeMatch &&
+    Number(timeMatch[1]) <= 23 &&
+    Number(timeMatch[2]) <= 59
+  ) {
     date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
   }
 
@@ -125,17 +141,6 @@ function formatPrice(value) {
   }).format(price);
 }
 
-function getStatusClasses(status) {
-  const classes = {
-    pending: "bg-yellow-50 text-yellow-700",
-    confirmed: "bg-blue-50 text-blue-700",
-    completed: "bg-green-50 text-green-700",
-    cancelled: "bg-red-50 text-red-700",
-  };
-
-  return classes[status] || "bg-slate-100 text-slate-700";
-}
-
 function formatStatus(status) {
   if (!status) return "Unknown";
 
@@ -166,13 +171,19 @@ function OwnerBookings() {
       const data = await getOwnerBookings();
       const nextBookings = getBookingsFromResponse(data);
 
-      if (!mountedRef.current || requestId !== fetchRequestIdRef.current) {
+      if (
+        !mountedRef.current ||
+        requestId !== fetchRequestIdRef.current
+      ) {
         return;
       }
 
       setBookings(nextBookings);
     } catch (err) {
-      if (!mountedRef.current || requestId !== fetchRequestIdRef.current) {
+      if (
+        !mountedRef.current ||
+        requestId !== fetchRequestIdRef.current
+      ) {
         return;
       }
 
@@ -182,7 +193,10 @@ function OwnerBookings() {
           "Unable to load bookings. Please try again.",
       );
     } finally {
-      if (mountedRef.current && requestId === fetchRequestIdRef.current) {
+      if (
+        mountedRef.current &&
+        requestId === fetchRequestIdRef.current
+      ) {
         setIsLoading(false);
       }
     }
@@ -305,7 +319,9 @@ function OwnerBookings() {
         ),
       );
 
-      window.dispatchEvent(new Event("bookflow:notifications-updated"));
+      window.dispatchEvent(
+        new Event("bookflow:notifications-updated"),
+      );
     } catch (err) {
       if (!mountedRef.current) return;
 
@@ -315,8 +331,8 @@ function OwnerBookings() {
           "Unable to update the booking. Please try again.",
       );
 
-      // Refresh server state after a failed update. Keep the original error
-      // visible if this recovery request also fails.
+      // Refresh server state after a failed update.
+      // Keep the original error visible if recovery also fails.
       const recoveryRequestId = ++fetchRequestIdRef.current;
 
       try {
@@ -349,28 +365,37 @@ function OwnerBookings() {
     setSortOrder("newest");
   };
 
-  return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8">
-          <Link
-            to="/dashboard"
-            className="text-sm font-semibold text-slate-700 hover:text-slate-900"
-          >
-            ← Back to dashboard
-          </Link>
+  const hasActiveFilters =
+    Boolean(search) ||
+    statusFilter !== "all" ||
+    sortOrder !== "newest";
 
-          <div className="mt-6">
-            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Business management
-            </p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-900 sm:text-4xl">
-              Bookings
-            </h1>
-            <p className="mt-3 max-w-2xl text-slate-600">
-              Search, filter, and manage appointments booked for your services.
-            </p>
-          </div>
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <Link
+          to="/dashboard"
+          className="text-sm font-semibold text-slate-600 transition hover:text-slate-900"
+        >
+          ← Back to dashboard
+        </Link>
+
+        <div className="mt-5">
+          <PageHeader
+            eyebrow="Business management"
+            title="Bookings"
+            description="Search, filter, and manage appointments booked for your services."
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={fetchBookings}
+                disabled={isLoading || updatingBookingIds.length > 0}
+              >
+                {isLoading ? "Refreshing..." : "Refresh bookings"}
+              </Button>
+            }
+          />
         </div>
 
         {!isLoading && !error && (
@@ -399,291 +424,271 @@ function OwnerBookings() {
               ))}
             </section>
 
-            <section
-              aria-label="Search and filter bookings"
-              className="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:p-5"
-            >
-              <div className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <label
-                    htmlFor="booking-search"
-                    className="mb-2 block text-sm font-semibold text-slate-700"
-                  >
-                    Search bookings
-                  </label>
-                  <input
-                    id="booking-search"
-                    type="search"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Customer, email, service..."
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  />
+            <Card>
+              <section
+                aria-label="Search and filter bookings"
+                className="space-y-4"
+              >
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label
+                      htmlFor="booking-search"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Search bookings
+                    </label>
+                    <Input
+                      id="booking-search"
+                      type="search"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Customer, email, service..."
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="booking-status"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Filter by status
+                    </label>
+                    <select
+                      id="booking-status"
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    >
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label} ({statusCounts[option.value]})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="booking-sort"
+                      className="mb-2 block text-sm font-semibold text-slate-700"
+                    >
+                      Sort by appointment date
+                    </label>
+                    <select
+                      id="booking-sort"
+                      value={sortOrder}
+                      onChange={(event) => setSortOrder(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    >
+                      <option value="newest">Latest first</option>
+                      <option value="oldest">Earliest first</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="booking-status"
-                    className="mb-2 block text-sm font-semibold text-slate-700"
-                  >
-                    Filter by status
-                  </label>
-                  <select
-                    id="booking-status"
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  >
-                    {STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label} ({statusCounts[option.value]})
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                  <p className="text-sm text-slate-600" aria-live="polite">
+                    Showing {filteredBookings.length} of {bookings.length}{" "}
+                    {bookings.length === 1 ? "booking" : "bookings"}
+                  </p>
+
+                  {hasActiveFilters && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={clearFilters}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
                 </div>
-
-                <div>
-                  <label
-                    htmlFor="booking-sort"
-                    className="mb-2 block text-sm font-semibold text-slate-700"
-                  >
-                    Sort by appointment date
-                  </label>
-                  <select
-                    id="booking-sort"
-                    value={sortOrder}
-                    onChange={(event) => setSortOrder(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  >
-                    <option value="newest">Latest first</option>
-                    <option value="oldest">Earliest first</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                <p className="text-sm text-slate-600" aria-live="polite">
-                  Showing {filteredBookings.length} of {bookings.length}{" "}
-                  {bookings.length === 1 ? "booking" : "bookings"}
-                </p>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    disabled={
-                      !search &&
-                      statusFilter === "all" &&
-                      sortOrder === "newest"
-                    }
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Clear filters
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={fetchBookings}
-                    disabled={updatingBookingIds.length > 0 || isLoading}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isLoading ? "Refreshing..." : "Refresh bookings"}
-                  </button>
-                </div>
-              </div>
-            </section>
+              </section>
+            </Card>
           </>
         )}
 
         {isLoading && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <p className="text-slate-600">Loading bookings...</p>
-          </div>
+          <Card>
+            <div role="status" aria-live="polite" className="py-8 text-center">
+              <p className="text-slate-600">Loading bookings...</p>
+            </div>
+          </Card>
         )}
 
         {!isLoading && error && (
-          <div
-            role="alert"
-            className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-red-100"
-          >
-            <h2 className="font-semibold text-red-800">
-              Unable to load bookings
-            </h2>
-            <p className="mt-2 text-sm text-red-700">{error}</p>
-            <button
-              type="button"
-              onClick={fetchBookings}
-              className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
-            >
-              Try again
-            </button>
-          </div>
+          <Card>
+            <div role="alert">
+              <h2 className="font-semibold text-red-800">
+                Unable to load bookings
+              </h2>
+              <p className="mt-2 text-sm text-red-700">{error}</p>
+              <div className="mt-4">
+                <Button type="button" onClick={fetchBookings}>
+                  Try again
+                </Button>
+              </div>
+            </div>
+          </Card>
         )}
 
         {!isLoading && !error && actionError && (
           <div
             role="alert"
-            className="mb-5 flex flex-col gap-3 rounded-xl bg-red-50 p-4 ring-1 ring-red-100 sm:flex-row sm:items-center sm:justify-between"
+            className="my-5 flex flex-col gap-3 rounded-xl bg-red-50 p-4 ring-1 ring-red-100 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="text-sm text-red-700">{actionError}</p>
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => setActionError("")}
-              className="self-start text-sm font-semibold text-red-800 underline hover:text-red-950 sm:self-auto"
             >
               Dismiss
-            </button>
+            </Button>
           </div>
         )}
 
         {!isLoading && !error && filteredBookings.length === 0 && (
-          <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200">
-            <h2 className="text-xl font-bold text-slate-900">
-              {bookings.length === 0
-                ? "No bookings yet"
-                : "No matching bookings"}
-            </h2>
-            <p className="mt-2 text-slate-600">
-              {bookings.length === 0
-                ? "When customers book your services, their appointments will appear here."
-                : "Try changing your search or filters."}
-            </p>
-            {bookings.length > 0 && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
-              >
-                Clear filters
-              </button>
-            )}
+          <div className="mt-6">
+            <Card>
+              <div className="py-5 text-center">
+                <h2 className="text-xl font-bold text-slate-900">
+                  {bookings.length === 0
+                    ? "No bookings yet"
+                    : "No matching bookings"}
+                </h2>
+                <p className="mt-2 text-slate-600">
+                  {bookings.length === 0
+                    ? "When customers book your services, their appointments will appear here."
+                    : "Try changing your search or filters."}
+                </p>
+                {bookings.length > 0 && (
+                  <div className="mt-4">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={clearFilters}
+                    >
+                      Clear filters
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Card>
           </div>
         )}
 
         {!isLoading && !error && filteredBookings.length > 0 && (
-          <div className="space-y-5">
+          <div className="mt-6 space-y-5">
             {filteredBookings.map((booking) => {
               const bookingId = getBookingId(booking);
               const isUpdating = updatingBookingIds.includes(bookingId);
-              const canManage = ALLOWED_TRANSITIONS[booking.status]?.length > 0;
+              const canManage =
+                ALLOWED_TRANSITIONS[booking.status]?.length > 0;
 
               return (
-                <article
-                  key={bookingId || `${booking.service?.name}-${booking.date}`}
-                  className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
-                >
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h2 className="text-xl font-bold text-slate-900">
-                          {booking.service?.name || "Unknown service"}
-                        </h2>
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
-                            booking.status,
-                          )}`}
-                        >
-                          {formatStatus(booking.status)}
-                        </span>
-                      </div>
+                <Card key={bookingId || `${booking.service?.name}-${booking.date}`}>
+                  <article>
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-xl font-bold text-slate-900">
+                            {booking.service?.name || "Unknown service"}
+                          </h2>
+                          <StatusBadge status={booking.status || "unknown"} />
+                        </div>
 
-                      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                        <div>
-                          <p className="text-sm text-slate-500">Customer</p>
-                          <p className="mt-1 font-semibold text-slate-900">
-                            {booking.customer?.name || "Unknown customer"}
-                          </p>
-                          {booking.customer?.email && (
-                            <p className="mt-1 break-all text-sm text-slate-600">
-                              {booking.customer.email}
+                        <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                          <div>
+                            <p className="text-sm text-slate-500">Customer</p>
+                            <p className="mt-1 font-semibold text-slate-900">
+                              {booking.customer?.name || "Unknown customer"}
                             </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <p className="text-sm text-slate-500">Date</p>
-                          <p className="mt-1 font-semibold text-slate-900">
-                            {formatDate(booking.date)}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-sm text-slate-500">Time</p>
-                          <p className="mt-1 font-semibold text-slate-900">
-                            {formatTime(booking.startTime)} –{" "}
-                            {formatTime(booking.endTime)}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-sm text-slate-500">Price</p>
-                          <p className="mt-1 font-semibold text-slate-900">
-                            {formatPrice(
-                              booking.service?.price ?? booking.price,
+                            {booking.customer?.email && (
+                              <p className="mt-1 break-all text-sm text-slate-600">
+                                {booking.customer.email}
+                              </p>
                             )}
-                          </p>
+                          </div>
+
+                          <div>
+                            <p className="text-sm text-slate-500">Date</p>
+                            <p className="mt-1 font-semibold text-slate-900">
+                              {formatDate(booking.date)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-sm text-slate-500">Time</p>
+                            <p className="mt-1 font-semibold text-slate-900">
+                              {formatTime(booking.startTime)} –{" "}
+                              {formatTime(booking.endTime)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-sm text-slate-500">Price</p>
+                            <p className="mt-1 font-semibold text-slate-900">
+                              {formatPrice(
+                                booking.service?.price ?? booking.price,
+                              )}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {canManage && (
-                    <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-                      {booking.status === "pending" && (
-                        <button
+                    {canManage && (
+                      <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+                        {booking.status === "pending" && (
+                          <Button
+                            type="button"
+                            onClick={() =>
+                              handleStatusUpdate(bookingId, "confirmed")
+                            }
+                            disabled={isUpdating || !bookingId}
+                          >
+                            {isUpdating ? "Updating..." : "Confirm booking"}
+                          </Button>
+                        )}
+
+                        {booking.status === "confirmed" && (
+                          <Button
+                            type="button"
+                            onClick={() =>
+                              handleStatusUpdate(bookingId, "completed")
+                            }
+                            disabled={isUpdating || !bookingId}
+                          >
+                            {isUpdating ? "Updating..." : "Mark completed"}
+                          </Button>
+                        )}
+
+                        <Button
                           type="button"
+                          variant="danger"
                           onClick={() =>
-                            handleStatusUpdate(bookingId, "confirmed")
+                            handleStatusUpdate(bookingId, "cancelled")
                           }
                           disabled={isUpdating || !bookingId}
-                          className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {isUpdating ? "Updating..." : "Confirm booking"}
-                        </button>
-                      )}
+                          {isUpdating ? "Updating..." : "Cancel booking"}
+                        </Button>
+                      </div>
+                    )}
 
-                      {booking.status === "confirmed" && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleStatusUpdate(bookingId, "completed")
-                          }
-                          disabled={isUpdating || !bookingId}
-                          className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isUpdating ? "Updating..." : "Mark completed"}
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleStatusUpdate(bookingId, "cancelled")
-                        }
-                        disabled={isUpdating || !bookingId}
-                        className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isUpdating ? "Updating..." : "Cancel booking"}
-                      </button>
-                    </div>
-                  )}
-
-                  {!canManage && (
-                    <div className="mt-6 border-t border-slate-200 pt-4">
-                      <p className="text-sm text-slate-500">
-                        {booking.status === "completed"
-                          ? "This booking has been completed. No further status changes are available."
-                          : booking.status === "cancelled"
-                            ? "This booking has been cancelled. No further status changes are available."
-                            : "No actions are available for this booking."}
-                      </p>
-                    </div>
-                  )}
-                </article>
+                    {!canManage && (
+                      <div className="mt-6 border-t border-slate-200 pt-4">
+                        <p className="text-sm text-slate-500">
+                          {booking.status === "completed"
+                            ? "This booking has been completed. No further status changes are available."
+                            : booking.status === "cancelled"
+                              ? "This booking has been cancelled. No further status changes are available."
+                              : "No actions are available for this booking."}
+                        </p>
+                      </div>
+                    )}
+                  </article>
+                </Card>
               );
             })}
           </div>
