@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -70,7 +69,10 @@ function OwnerServices() {
     return services
       .filter((service) => {
         const matchesSearch = [service.name, service.description].some(
-          (value) => String(value || "").toLowerCase().includes(query),
+          (value) =>
+            String(value || "")
+              .toLowerCase()
+              .includes(query),
         );
 
         const matchesStatus =
@@ -392,7 +394,9 @@ function OwnerServices() {
                               </h2>
 
                               <StatusBadge
-                                status={service.isActive ? "active" : "inactive"}
+                                status={
+                                  service.isActive ? "active" : "inactive"
+                                }
                               />
                             </div>
 
