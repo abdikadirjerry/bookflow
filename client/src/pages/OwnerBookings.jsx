@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -46,9 +45,7 @@ function getBookingsFromResponse(data) {
 
   if (
     !bookings ||
-    !bookings.every(
-      (booking) => booking && typeof booking === "object",
-    )
+    !bookings.every((booking) => booking && typeof booking === "object")
   ) {
     throw new Error("The server returned an invalid bookings response.");
   }
@@ -72,15 +69,9 @@ function getDateTimestamp(booking) {
 
   if (Number.isNaN(date.getTime())) return 0;
 
-  const timeMatch = /^(\d{1,2}):(\d{2})/.exec(
-    String(booking.startTime || ""),
-  );
+  const timeMatch = /^(\d{1,2}):(\d{2})/.exec(String(booking.startTime || ""));
 
-  if (
-    timeMatch &&
-    Number(timeMatch[1]) <= 23 &&
-    Number(timeMatch[2]) <= 59
-  ) {
+  if (timeMatch && Number(timeMatch[1]) <= 23 && Number(timeMatch[2]) <= 59) {
     date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
   }
 
@@ -171,19 +162,13 @@ function OwnerBookings() {
       const data = await getOwnerBookings();
       const nextBookings = getBookingsFromResponse(data);
 
-      if (
-        !mountedRef.current ||
-        requestId !== fetchRequestIdRef.current
-      ) {
+      if (!mountedRef.current || requestId !== fetchRequestIdRef.current) {
         return;
       }
 
       setBookings(nextBookings);
     } catch (err) {
-      if (
-        !mountedRef.current ||
-        requestId !== fetchRequestIdRef.current
-      ) {
+      if (!mountedRef.current || requestId !== fetchRequestIdRef.current) {
         return;
       }
 
@@ -193,10 +178,7 @@ function OwnerBookings() {
           "Unable to load bookings. Please try again.",
       );
     } finally {
-      if (
-        mountedRef.current &&
-        requestId === fetchRequestIdRef.current
-      ) {
+      if (mountedRef.current && requestId === fetchRequestIdRef.current) {
         setIsLoading(false);
       }
     }
@@ -319,9 +301,7 @@ function OwnerBookings() {
         ),
       );
 
-      window.dispatchEvent(
-        new Event("bookflow:notifications-updated"),
-      );
+      window.dispatchEvent(new Event("bookflow:notifications-updated"));
     } catch (err) {
       if (!mountedRef.current) return;
 
@@ -366,9 +346,7 @@ function OwnerBookings() {
   };
 
   const hasActiveFilters =
-    Boolean(search) ||
-    statusFilter !== "all" ||
-    sortOrder !== "newest";
+    Boolean(search) || statusFilter !== "all" || sortOrder !== "newest";
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
@@ -582,11 +560,12 @@ function OwnerBookings() {
             {filteredBookings.map((booking) => {
               const bookingId = getBookingId(booking);
               const isUpdating = updatingBookingIds.includes(bookingId);
-              const canManage =
-                ALLOWED_TRANSITIONS[booking.status]?.length > 0;
+              const canManage = ALLOWED_TRANSITIONS[booking.status]?.length > 0;
 
               return (
-                <Card key={bookingId || `${booking.service?.name}-${booking.date}`}>
+                <Card
+                  key={bookingId || `${booking.service?.name}-${booking.date}`}
+                >
                   <article>
                     <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
