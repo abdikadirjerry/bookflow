@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -35,10 +34,7 @@ function OwnerCustomers() {
 
       const nextCustomers = data.customers;
 
-      if (
-        !mountedRef.current ||
-        requestId !== requestIdRef.current
-      ) {
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
         return;
       }
 
@@ -49,10 +45,7 @@ function OwnerCustomers() {
           : nextCustomers.length,
       );
     } catch (requestError) {
-      if (
-        !mountedRef.current ||
-        requestId !== requestIdRef.current
-      ) {
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
         return;
       }
 
@@ -62,10 +55,7 @@ function OwnerCustomers() {
           "Unable to load customers. Please try again.",
       );
     } finally {
-      if (
-        mountedRef.current &&
-        requestId === requestIdRef.current
-      ) {
+      if (mountedRef.current && requestId === requestIdRef.current) {
         setIsLoading(false);
       }
     }
@@ -89,7 +79,9 @@ function OwnerCustomers() {
         if (!query) return true;
 
         return [customer.name, customer.email].some((value) =>
-          String(value || "").toLowerCase().includes(query),
+          String(value || "")
+            .toLowerCase()
+            .includes(query),
         );
       })
       .sort((a, b) => {
@@ -162,9 +154,7 @@ function OwnerCustomers() {
               <p className="text-sm font-medium text-slate-500">
                 Total customers
               </p>
-              <p className="mt-2 text-3xl font-bold text-slate-900">
-                {count}
-              </p>
+              <p className="mt-2 text-3xl font-bold text-slate-900">{count}</p>
             </Card>
 
             <Card>
@@ -180,11 +170,7 @@ function OwnerCustomers() {
 
         {isLoading && (
           <Card>
-            <div
-              role="status"
-              aria-live="polite"
-              className="py-8 text-center"
-            >
+            <div role="status" aria-live="polite" className="py-8 text-center">
               <p className="text-slate-600">Loading customers...</p>
             </div>
           </Card>
@@ -260,9 +246,7 @@ function OwnerCustomers() {
                       onChange={(event) => setSortOrder(event.target.value)}
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                     >
-                      <option value="most-bookings">
-                        Most bookings first
-                      </option>
+                      <option value="most-bookings">Most bookings first</option>
                       <option value="fewest-bookings">
                         Fewest bookings first
                       </option>
