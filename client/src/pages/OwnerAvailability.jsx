@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+
 import {
   getAvailability,
   updateAvailability,
 } from "../services/availabilityService";
+
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import PageHeader from "../components/ui/PageHeader";
 
 const days = [
   { key: "monday", label: "Monday" },
@@ -50,6 +55,10 @@ function OwnerAvailability() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const mountedRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const saveInProgressRef = useRef(false);
+
   const hasChanges = useMemo(
     () => !schedulesEqual(availability, savedAvailability),
     [availability, savedAvailability],
@@ -61,28 +70,48 @@ function OwnerAvailability() {
   );
 
   const fetchAvailability = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError("");
-      setSuccess("");
+    if (saveInProgressRef.current) return;
 
+    const requestId = ++requestIdRef.current;
+
+    setIsLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
       const data = await getAvailability();
       const normalized = normalizeAvailability(data?.availability);
+
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
 
       setAvailability(normalized);
       setSavedAvailability(normalized);
     } catch (requestError) {
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
+
       setError(
         requestError.response?.data?.message ||
           "Unable to load your availability. Please try again.",
       );
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current && requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     fetchAvailability();
+
+    return () => {
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+    };
   }, [fetchAvailability]);
 
   useEffect(() => {
@@ -95,7 +124,9 @@ function OwnerAvailability() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
 
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
   }, [hasChanges, isLoading, isSaving]);
 
   const handleDayChange = (day, field, value) => {
@@ -112,7 +143,7 @@ function OwnerAvailability() {
   };
 
   const copyScheduleToWeekdays = () => {
-    const mondaySchedule = availability.monday;
+    const mondaySchedule = { ...availability.monday };
 
     setAvailability((current) => ({
       ...current,
@@ -156,6 +187,9 @@ function OwnerAvailability() {
 
   const handleSave = async (event) => {
     event.preventDefault();
+
+    if (saveInProgressRef.current || !hasChanges) return;
+
     setError("");
     setSuccess("");
 
@@ -177,67 +211,83 @@ function OwnerAvailability() {
       }
     }
 
-    try {
-      setIsSaving(true);
+    saveInProgressRef.current = true;
+    const requestId = ++requestIdRef.current;
 
+    setIsSaving(true);
+
+    try {
       const normalized = normalizeAvailability(availability);
       const data = await updateAvailability(normalized);
       const saved = normalizeAvailability(data?.availability || normalized);
+
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
 
       setAvailability(saved);
       setSavedAvailability(saved);
       setSuccess("Your availability has been saved successfully.");
     } catch (requestError) {
+      if (!mountedRef.current || requestId !== requestIdRef.current) {
+        return;
+      }
+
       setError(
         requestError.response?.data?.message ||
           "Unable to save your availability. Please try again.",
       );
     } finally {
-      setIsSaving(false);
+      saveInProgressRef.current = false;
+
+      if (mountedRef.current && requestId === requestIdRef.current) {
+        setIsSaving(false);
+      }
     }
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl">
-        <div className="mb-8">
-          <Link
-            to="/dashboard"
-            className="text-sm font-semibold text-slate-700 hover:text-slate-900"
-          >
-            ← Back to dashboard
-          </Link>
+        <Link
+          to="/dashboard"
+          onClick={(event) => {
+            if (
+              hasChanges &&
+              !window.confirm("Leave without saving your changes?")
+            ) {
+              event.preventDefault();
+            }
+          }}
+          className="text-sm font-semibold text-slate-600 transition hover:text-slate-900"
+        >
+          ← Back to dashboard
+        </Link>
 
-          <div className="mt-6">
-            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Business management
-            </p>
-
-            <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
-                  Availability
-                </h1>
-                <p className="mt-3 max-w-2xl text-slate-600">
-                  Set the days and hours when customers can book your services.
-                </p>
-              </div>
-
-              <button
+        <div className="mt-5">
+          <PageHeader
+            eyebrow="Business management"
+            title="Availability"
+            description="Set the days and hours when customers can book your services."
+            action={
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={fetchAvailability}
                 disabled={isLoading || isSaving || hasChanges}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isLoading ? "Loading..." : "Refresh schedule"}
-              </button>
-            </div>
-          </div>
+              </Button>
+            }
+          />
         </div>
 
-        {!isLoading && (
-          <div className="mb-6 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        {!isLoading && !error && (
+          <section
+            aria-label="Availability statistics"
+            className="mb-6 grid gap-4 sm:grid-cols-2"
+          >
+            <Card>
               <p className="text-sm font-medium text-slate-500">Working days</p>
               <p className="mt-2 text-3xl font-bold text-slate-900">
                 {enabledDays}{" "}
@@ -245,9 +295,9 @@ function OwnerAvailability() {
                   of 7
                 </span>
               </p>
-            </div>
+            </Card>
 
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <Card>
               <p className="text-sm font-medium text-slate-500">
                 Schedule status
               </p>
@@ -259,28 +309,27 @@ function OwnerAvailability() {
                   ? "Save to apply your updated hours."
                   : "Your current schedule is up to date."}
               </p>
-            </div>
-          </div>
+            </Card>
+          </section>
         )}
 
         {isLoading ? (
-          <div
-            role="status"
-            className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <p className="text-slate-600">Loading your availability...</p>
-          </div>
-        ) : error && !availability ? (
-          <div role="alert" className="rounded-2xl bg-red-50 p-6">
-            <p className="text-sm text-red-700">{error}</p>
-            <button
-              type="button"
-              onClick={fetchAvailability}
-              className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800"
-            >
-              Try again
-            </button>
-          </div>
+          <Card>
+            <div role="status" aria-live="polite" className="py-8 text-center">
+              <p className="text-slate-600">Loading your availability...</p>
+            </div>
+          </Card>
+        ) : error && !savedAvailability ? (
+          <Card>
+            <div role="alert">
+              <p className="text-sm text-red-700">{error}</p>
+              <div className="mt-4">
+                <Button type="button" onClick={fetchAvailability}>
+                  Try again
+                </Button>
+              </div>
+            </div>
+          </Card>
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
             {error && (
@@ -301,7 +350,7 @@ function OwnerAvailability() {
               </div>
             )}
 
-            <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+            <Card padding={0}>
               <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">
@@ -313,13 +362,14 @@ function OwnerAvailability() {
                   </p>
                 </div>
 
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={copyScheduleToWeekdays}
-                  className="self-start rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 sm:self-auto"
+                  disabled={isSaving || isLoading}
                 >
                   Copy Monday to weekdays
-                </button>
+                </Button>
               </div>
 
               <div className="divide-y divide-slate-200">
@@ -336,6 +386,7 @@ function OwnerAvailability() {
                           <input
                             type="checkbox"
                             checked={Boolean(schedule.enabled)}
+                            disabled={isSaving}
                             onChange={(event) =>
                               handleDayChange(
                                 key,
@@ -353,8 +404,9 @@ function OwnerAvailability() {
                         {index > 0 && (
                           <button
                             type="button"
+                            disabled={isSaving}
                             onClick={() => copyPreviousDay(index)}
-                            className="ml-7 mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900"
+                            className="ml-7 mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Copy previous day
                           </button>
@@ -368,7 +420,7 @@ function OwnerAvailability() {
                         <input
                           type="time"
                           value={schedule.startTime || ""}
-                          disabled={!schedule.enabled}
+                          disabled={!schedule.enabled || isSaving}
                           onChange={(event) =>
                             handleDayChange(
                               key,
@@ -388,7 +440,7 @@ function OwnerAvailability() {
                         <input
                           type="time"
                           value={schedule.endTime || ""}
-                          disabled={!schedule.enabled}
+                          disabled={!schedule.enabled || isSaving}
                           onChange={(event) =>
                             handleDayChange(key, "endTime", event.target.value)
                           }
@@ -400,40 +452,21 @@ function OwnerAvailability() {
                   );
                 })}
               </div>
-            </section>
+            </Card>
 
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={handleReset}
                 disabled={!hasChanges || isSaving}
-                className="rounded-lg border border-slate-300 px-5 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Discard changes
-              </button>
+              </Button>
 
-              <Link
-                to="/dashboard"
-                onClick={(event) => {
-                  if (
-                    hasChanges &&
-                    !window.confirm("Leave without saving your changes?")
-                  ) {
-                    event.preventDefault();
-                  }
-                }}
-                className="rounded-lg border border-slate-300 px-5 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                Back to dashboard
-              </Link>
-
-              <button
-                type="submit"
-                disabled={isSaving || !hasChanges}
-                className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <Button type="submit" disabled={isSaving || !hasChanges}>
                 {isSaving ? "Saving..." : "Save availability"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
