@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -89,12 +89,20 @@ function OwnerLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
+  const menuButtonRef = useRef(null);
+  const closeButtonRef = useRef(null);
+
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.key]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    closeButtonRef.current?.focus();
 
     function handleEscape(event) {
       if (event.key === "Escape") {
@@ -105,9 +113,13 @@ function OwnerLayout() {
     window.addEventListener("keydown", handleEscape);
 
     return () => {
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleEscape);
+      menuButtonRef.current?.focus();
     };
   }, [mobileMenuOpen]);
+
+  const closeMenu = () => setMobileMenuOpen(false);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -122,11 +134,13 @@ function OwnerLayout() {
           {/* Mobile header */}
           <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
             <button
+              ref={menuButtonRef}
               type="button"
               aria-label="Open owner navigation"
               aria-expanded={mobileMenuOpen}
+              aria-controls="owner-mobile-navigation"
               onClick={() => setMobileMenuOpen(true)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-xl text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-xl text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               ☰
             </button>
@@ -154,13 +168,17 @@ function OwnerLayout() {
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
+            tabIndex={-1}
             aria-label="Close owner navigation"
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={closeMenu}
             className="absolute inset-0 h-full w-full bg-slate-950/40"
           />
 
           <aside
+            id="owner-mobile-navigation"
             aria-label="Mobile owner navigation drawer"
+            aria-modal="true"
+            role="dialog"
             className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-white shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -169,17 +187,18 @@ function OwnerLayout() {
               </span>
 
               <button
+                ref={closeButtonRef}
                 type="button"
                 aria-label="Close navigation menu"
-                onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg px-3 py-1 text-2xl text-slate-600 transition hover:bg-slate-100"
+                onClick={closeMenu}
+                className="rounded-lg px-3 py-1 text-2xl text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 ×
               </button>
             </div>
 
             <div className="flex-1">
-              <OwnerSidebar onNavigate={() => setMobileMenuOpen(false)} />
+              <OwnerSidebar onNavigate={closeMenu} />
             </div>
           </aside>
         </div>
