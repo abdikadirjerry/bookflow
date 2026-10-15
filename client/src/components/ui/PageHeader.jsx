@@ -1,9 +1,13 @@
 export default function PageHeader({
   title,
   description,
+  eyebrow,
   children,
+  action,
   className = "",
 }) {
+  const headerActions = action ?? children;
+
   return (
     <div
       className={[
@@ -14,6 +18,12 @@ export default function PageHeader({
         .join(" ")}
     >
       <div className="min-w-0">
+        {eyebrow && (
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+            {eyebrow}
+          </p>
+        )}
+
         <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
           {title}
         </h1>
@@ -25,9 +35,9 @@ export default function PageHeader({
         )}
       </div>
 
-      {children && (
+      {headerActions && (
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0">
-          {children}
+          {headerActions}
         </div>
       )}
     </div>
