@@ -2,17 +2,48 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
 
-    if (!name || !email || !password) {
+    if (
+      typeof name !== "string" ||
+      typeof email !== "string" ||
+      typeof password !== "string"
+    ) {
       return res.status(400).json({
-        message: "Name, email, and password are required",
+        message: "Name, email, and password are required.",
       });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (normalizedName.length < 2) {
+      return res.status(400).json({
+        message: "Name must be at least 2 characters.",
+      });
+    }
+
+    if (normalizedName.length > 100) {
+      return res.status(400).json({
+        message: "Name must be 100 characters or fewer.",
+      });
+    }
+
+    if (!isValidEmail(normalizedEmail) || normalizedEmail.length > 254) {
+      return res.status(400).json({
+        message: "Please provide a valid email address.",
+      });
+    }
+
+    if (password.length < 6 || password.length > 128) {
+      return res.status(400).json({
+        message: "Password must be between 6 and 128 characters.",
+      });
+    }
 
     const existingUser = await User.findOne({
       email: normalizedEmail,
@@ -20,20 +51,20 @@ const registerUser = async (req, res) => {
 
     if (existingUser) {
       return res.status(409).json({
-        message: "A user with this email already exists",
+        message: "A user with this email already exists.",
       });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await User.create({
-      name: name.trim(),
+      name: normalizedName,
       email: normalizedEmail,
       password: hashedPassword,
       role: "customer",
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "User registered successfully",
       user: {
         id: user._id,
@@ -43,25 +74,48 @@ const registerUser = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "A user with this email already exists.",
+      });
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Please check the registration details.",
+      });
+    }
+
     console.error("Registration error:", error);
 
-    res.status(500).json({
-      message: "Server error while registering user",
+    return res.status(500).json({
+      message: "Server error while registering user.",
     });
   }
 };
 
 const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
-    if (!email || !password) {
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !email.trim() ||
+      !password
+    ) {
       return res.status(400).json({
-        message: "Email and password are required",
+        message: "Email and password are required.",
       });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(normalizedEmail) || normalizedEmail.length > 254) {
+      return res.status(400).json({
+        message: "Invalid email or password.",
+      });
+    }
 
     const user = await User.findOne({
       email: normalizedEmail,
@@ -81,6 +135,14 @@ const loginUser = async (req, res) => {
       });
     }
 
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET is not configured.");
+
+      return res.status(500).json({
+        message: "Server authentication is not configured.",
+      });
+    }
+
     const token = jwt.sign(
       {
         userId: user._id,
@@ -92,7 +154,7 @@ const loginUser = async (req, res) => {
       },
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Login successful",
       token,
       user: {
@@ -105,7 +167,7 @@ const loginUser = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while logging in",
     });
   }

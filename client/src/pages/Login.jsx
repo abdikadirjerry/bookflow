@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
-
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -25,10 +25,11 @@ function Login() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     setError("");
 
-    if (!formData.email.trim() || !formData.password) {
+    const email = formData.email.trim();
+
+    if (!email || !formData.password) {
       setError("Email and password are required.");
       return;
     }
@@ -36,16 +37,25 @@ function Login() {
     try {
       setIsLoading(true);
 
-      const data = await login(formData.email.trim(), formData.password);
+      const data = await login(email, formData.password);
 
-      if (data.user.role === "business_owner") {
-        navigate("/dashboard");
-      } else {
-        navigate("/services");
-      }
+      const requestedPath = location.state?.from;
+      const requestedUrl =
+        requestedPath?.pathname &&
+        requestedPath.pathname.startsWith("/") &&
+        !requestedPath.pathname.startsWith("//")
+          ? `${requestedPath.pathname}${requestedPath.search || ""}${requestedPath.hash || ""}`
+          : null;
+
+      const fallbackPath =
+        data.user.role === "business_owner" ? "/dashboard" : "/services";
+
+      navigate(requestedUrl || fallbackPath, { replace: true });
     } catch (error) {
       setError(
-        error.response?.data?.message || "Unable to log in. Please try again.",
+        error.response?.data?.message ||
+          error.message ||
+          "Unable to log in. Please try again.",
       );
     } finally {
       setIsLoading(false);
@@ -56,7 +66,7 @@ function Login() {
     <main className="min-h-screen bg-slate-50 px-4 py-12">
       <div className="mx-auto max-w-md">
         <div className="mb-8 text-center">
-          <Link to="/" className="text-3xl font-bold text-slate-900">
+          <Link to="/services" className="text-3xl font-bold text-slate-900">
             BookFlow
           </Link>
 
@@ -96,8 +106,9 @@ function Login() {
                 onChange={handleChange}
                 autoComplete="email"
                 placeholder="you@example.com"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                required
                 disabled={isLoading}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
@@ -117,8 +128,9 @@ function Login() {
                 onChange={handleChange}
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                required
                 disabled={isLoading}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 

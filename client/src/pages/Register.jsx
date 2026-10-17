@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -6,16 +6,25 @@ function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
 
+  const redirectTimer = useRef(null);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
   });
-
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimer.current) {
+        clearTimeout(redirectTimer.current);
+      }
+    };
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -28,6 +37,8 @@ function Register() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (isLoading) return;
 
     setError("");
     setSuccess("");
@@ -44,6 +55,11 @@ function Register() {
 
     if (!email) {
       setError("Email is required.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -67,6 +83,11 @@ function Register() {
       return;
     }
 
+    if (password.length > 128) {
+      setError("Password must be 128 characters or fewer.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -79,12 +100,13 @@ function Register() {
 
       setSuccess("Account created successfully. Redirecting to login...");
 
-      setTimeout(() => {
-        navigate("/login");
+      redirectTimer.current = setTimeout(() => {
+        navigate("/login", { replace: true });
       }, 1000);
     } catch (error) {
       setError(
         error.response?.data?.message ||
+          error.message ||
           "Unable to create your account. Please try again.",
       );
     } finally {
@@ -96,7 +118,7 @@ function Register() {
     <main className="min-h-screen bg-slate-50 px-4 py-12">
       <div className="mx-auto max-w-md">
         <div className="mb-8 text-center">
-          <Link to="/" className="text-3xl font-bold text-slate-900">
+          <Link to="/services" className="text-3xl font-bold text-slate-900">
             BookFlow
           </Link>
 
@@ -145,8 +167,10 @@ function Register() {
                 onChange={handleChange}
                 autoComplete="name"
                 placeholder="Your name"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                minLength={2}
+                required
                 disabled={isLoading}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
@@ -166,8 +190,9 @@ function Register() {
                 onChange={handleChange}
                 autoComplete="email"
                 placeholder="you@example.com"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                required
                 disabled={isLoading}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
@@ -187,8 +212,11 @@ function Register() {
                 onChange={handleChange}
                 autoComplete="new-password"
                 placeholder="At least 6 characters"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                minLength={6}
+                maxLength={128}
+                required
                 disabled={isLoading}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
@@ -208,8 +236,9 @@ function Register() {
                 onChange={handleChange}
                 autoComplete="new-password"
                 placeholder="Enter your password again"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                required
                 disabled={isLoading}
+                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
             </div>
 
