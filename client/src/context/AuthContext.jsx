@@ -6,62 +6,77 @@ import {
 
 const AuthContext = createContext(null);
 
-const getStoredUser = () => {
-  const storedUser = localStorage.getItem("bookflow_user");
-
-  if (!storedUser) {
-    return null;
-  }
-
+const getStoredSession = () => {
   try {
-    return JSON.parse(storedUser);
-  } catch {
-    localStorage.removeItem("bookflow_user");
-    return null;
-  }
-};
+    const token = localStorage.getItem("bookflow_token");
+    const storedUser = localStorage.getItem("bookflow_user");
 
-const getStoredToken = () => {
-  return localStorage.getItem("bookflow_token");
+    if (!token || !storedUser) {
+      localStorage.removeItem("bookflow_token");
+      localStorage.removeItem("bookflow_user");
+      return { token: null, user: null };
+    }
+
+    const user = JSON.parse(storedUser);
+
+    if (!user || typeof user !== "object" || Array.isArray(user)) {
+      throw new Error("Invalid stored user");
+    }
+
+    return { token, user };
+  } catch {
+    localStorage.removeItem("bookflow_token");
+    localStorage.removeItem("bookflow_user");
+
+    return { token: null, user: null };
+  }
 };
 
 const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(getStoredUser);
-  const [token, setToken] = useState(getStoredToken);
+  const [session, setSession] = useState(getStoredSession);
 
   const login = async (email, password) => {
     const data = await loginUserRequest(email, password);
 
+    if (
+      !data?.token ||
+      typeof data.token !== "string" ||
+      !data?.user ||
+      typeof data.user !== "object" ||
+      Array.isArray(data.user)
+    ) {
+      throw new Error("The server returned an invalid login response.");
+    }
+
     localStorage.setItem("bookflow_token", data.token);
     localStorage.setItem("bookflow_user", JSON.stringify(data.user));
 
-    setUser(data.user);
-    setToken(data.token);
+    setSession({
+      token: data.token,
+      user: data.user,
+    });
 
     return data;
   };
 
   const register = async (name, email, password) => {
-    const data = await registerUserRequest(name, email, password);
-
-    return data;
+    return registerUserRequest(name, email, password);
   };
 
   const logout = () => {
     localStorage.removeItem("bookflow_token");
     localStorage.removeItem("bookflow_user");
 
-    setUser(null);
-    setToken(null);
+    setSession({ token: null, user: null });
   };
 
   const value = {
-    user,
-    token,
+    user: session.user,
+    token: session.token,
     login,
     register,
     logout,
-    isAuthenticated: Boolean(token),
+    isAuthenticated: Boolean(session.token && session.user),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

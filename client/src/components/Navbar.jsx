@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getNotifications } from "../services/notificationService";
@@ -9,22 +9,7 @@ function Navbar() {
   const navigate = useNavigate();
 
   const [unreadCount, setUnreadCount] = useState(0);
-
   const isOwner = user?.role === "business_owner";
-
-  const loadUnreadCount = useCallback(async () => {
-    if (!isAuthenticated) {
-      setUnreadCount(0);
-      return;
-    }
-
-    try {
-      const data = await getNotifications();
-      setUnreadCount(Math.max(0, Number(data?.unreadCount) || 0));
-    } catch (error) {
-      console.error("Unable to load unread notifications:", error);
-    }
-  }, [isAuthenticated]);
 
   useEffect(() => {
     let active = true;
